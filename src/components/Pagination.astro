@@ -1,0 +1,18 @@
+---
+interface Props {
+  currentPage: number;
+  totalPages: number;
+}
+
+const { currentPage, totalPages } = Astro.props;
+const previousHref = currentPage === 2 ? '/' : `/page/${currentPage - 1}/`;
+const nextHref = `/page/${currentPage + 1}/`;
+---
+
+{totalPages > 1 && (
+  <nav class="pagination" aria-label="文章分页">
+    {currentPage > 1 ? <a href={previousHref}>上一页</a> : <span>上一页</span>}
+    <span>{currentPage} / {totalPages}</span>
+    {currentPage < totalPages ? <a href={nextHref}>下一页</a> : <span>下一页</span>}
+  </nav>
+)}

@@ -1,0 +1,34 @@
+---
+import BaseLayout from '../../../../layouts/BaseLayout.astro';
+import { formatDate, getAllPosts, getArchiveParts, getPostUrl } from '../../../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getAllPosts();
+  const keys = new Map<string, { year: string; month: string }>();
+  for (const post of posts) {
+    const { year, month } = getArchiveParts(post);
+    keys.set(`${year}-${month}`, { year, month });
+  }
+  return [...keys.values()].map(({ year, month }) => ({ params: { year, month } }));
+}
+
+const { year, month } = Astro.params;
+const posts = (await getAllPosts()).filter((post) => {
+  const parts = getArchiveParts(post);
+  return parts.year === year && parts.month === month;
+});
+---
+
+<BaseLayout title={`${year}-${month} 归档`} current="archives">
+  <section class="simple-page">
+    <h1 class="page-title">{year}-{month} 归档</h1>
+    <ul class="archive-list">
+      {posts.map((post) => (
+        <li>
+          <a href={getPostUrl(post)}>{post.data.title}</a>
+          <time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time>
+        </li>
+      ))}
+    </ul>
+  </section>
+</BaseLayout>

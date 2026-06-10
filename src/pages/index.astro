@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Pagination from '../components/Pagination.astro';
+import PostList from '../components/PostList.astro';
+import { getAllPosts } from '../lib/posts';
+
+const PAGE_SIZE = 10;
+const posts = await getAllPosts();
+const totalPages = Math.ceil(posts.length / PAGE_SIZE);
+const pagePosts = posts.slice(0, PAGE_SIZE);
+---
+
+<BaseLayout current="home">
+  <h1 class="page-title">文章列表</h1>
+  <PostList posts={pagePosts} />
+  <Pagination currentPage={1} totalPages={totalPages} />
+</BaseLayout>

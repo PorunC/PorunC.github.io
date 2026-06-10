@@ -1,0 +1,26 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { formatDate, getAllPosts, getPostUrl, groupPostsByYear } from '../../lib/posts';
+
+const posts = await getAllPosts();
+const years = groupPostsByYear(posts);
+---
+
+<BaseLayout title="归档" current="archives">
+  <section class="simple-page">
+    <h1 class="page-title">归档</h1>
+    {years.map(([year, yearPosts]) => (
+      <section>
+        <h2><a href={`/archives/${year}/`}>{year}</a></h2>
+        <ul class="archive-list">
+          {yearPosts.map((post) => (
+            <li>
+              <a href={getPostUrl(post)}>{post.data.title}</a>
+              <time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))}
+  </section>
+</BaseLayout>

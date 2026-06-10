@@ -1,0 +1,17 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { SITE } from '../../lib/site';
+---
+
+<BaseLayout title="关于" current="about">
+  <section class="simple-page">
+    <h1 class="page-title">关于</h1>
+    <p><img src="/img/avatar.jpeg" alt={SITE.author} width="120" height="120" /></p>
+    <p>{SITE.description}</p>
+    <p>
+      <a href={`mailto:${SITE.email}`}>Email</a>
+      ·
+      <a href={SITE.github} target="_blank" rel="noreferrer">GitHub</a>
+    </p>
+  </section>
+</BaseLayout>

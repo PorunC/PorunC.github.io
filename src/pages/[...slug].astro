@@ -1,0 +1,52 @@
+---
+import { render } from 'astro:content';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import {
+  formatDate,
+  getAllPosts,
+  getCategoryUrl,
+  getPostUrl,
+  getTagUrl,
+  type BlogPost,
+} from '../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getAllPosts();
+  return posts.map((post) => ({
+    params: { slug: post.data.slug },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props as { post: BlogPost };
+const posts = await getAllPosts();
+const index = posts.findIndex((entry) => entry.id === post.id);
+const nextPost = index > 0 ? posts[index - 1] : undefined;
+const previousPost = index >= 0 && index < posts.length - 1 ? posts[index + 1] : undefined;
+const { Content } = await render(post);
+---
+
+<BaseLayout title={post.data.title} description={post.data.excerpt} current="home">
+  <article class="article">
+    <h1>{post.data.title}</h1>
+    <div class="post-meta">
+      <time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time>
+      {post.data.updated && <span>更新于 {formatDate(post.data.updated)}</span>}
+      {post.data.categories.map((category) => (
+        <a href={getCategoryUrl(category)}>{category}</a>
+      ))}
+      {post.data.tags.map((tag) => (
+        <a href={getTagUrl(tag)}>{tag}</a>
+      ))}
+    </div>
+    <div class="article-body">
+      <Content />
+    </div>
+    {(previousPost || nextPost) && (
+      <nav class="article-nav" aria-label="文章导航">
+        {previousPost ? <a href={getPostUrl(previousPost)}>上一篇：{previousPost.data.title}</a> : <span></span>}
+        {nextPost ? <a href={getPostUrl(nextPost)}>下一篇：{nextPost.data.title}</a> : <span></span>}
+      </nav>
+    )}
+  </article>
+</BaseLayout>

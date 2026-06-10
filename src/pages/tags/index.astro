@@ -1,0 +1,18 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { getAllPosts, getTagUrl, getTermCounts } from '../../lib/posts';
+
+const posts = await getAllPosts();
+const tags = getTermCounts(posts, 'tags');
+---
+
+<BaseLayout title="标签" current="tags">
+  <section class="simple-page">
+    <h1 class="page-title">标签</h1>
+    <ul class="term-list">
+      {tags.map(([tag, count]) => (
+        <li><a href={getTagUrl(tag)}>{tag}</a><span>{count}</span></li>
+      ))}
+    </ul>
+  </section>
+</BaseLayout>

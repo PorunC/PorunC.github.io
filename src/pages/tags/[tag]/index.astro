@@ -1,0 +1,19 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PostList from '../../../components/PostList.astro';
+import { getAllPosts, termSlug } from '../../../lib/posts';
+
+export async function getStaticPaths() {
+  const posts = await getAllPosts();
+  const tags = new Set(posts.flatMap((post) => post.data.tags));
+  return [...tags].map((tag) => ({ params: { tag: termSlug(tag) }, props: { tag } }));
+}
+
+const { tag } = Astro.props;
+const posts = (await getAllPosts()).filter((post) => post.data.tags.includes(tag));
+---
+
+<BaseLayout title={`标签：${tag}`} current="tags">
+  <h1 class="page-title">标签：{tag}</h1>
+  <PostList posts={posts} />
+</BaseLayout>

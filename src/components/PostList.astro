@@ -1,0 +1,32 @@
+---
+import type { BlogPost } from '../lib/posts';
+import { formatDate, getCategoryUrl, getPostUrl, getTagUrl } from '../lib/posts';
+
+interface Props {
+  posts: BlogPost[];
+}
+
+const { posts } = Astro.props;
+---
+
+<div class="post-list">
+  {posts.map((post) => (
+    <article class="post-list-item">
+      <div class="post-list-date">
+        <time datetime={post.data.date.toISOString()}>{formatDate(post.data.date)}</time>
+      </div>
+      <div class="post-list-main">
+        <h2><a href={getPostUrl(post)}>{post.data.title}</a></h2>
+        <div class="post-meta">
+          {post.data.categories.map((category) => (
+            <a href={getCategoryUrl(category)}>{category}</a>
+          ))}
+          {post.data.tags.map((tag) => (
+            <a href={getTagUrl(tag)}>{tag}</a>
+          ))}
+        </div>
+        {post.data.excerpt && <p>{post.data.excerpt}</p>}
+      </div>
+    </article>
+  ))}
+</div>

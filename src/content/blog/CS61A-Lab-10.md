@@ -69,7 +69,10 @@ Let’s familiarize ourselves with some built-in Scheme procedures and special f
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q combinations -u ``` |
+> ```
+ python3 ok -q combinations -u
+> ```
+
 
 ```bash
 $ python3 ok -q combinations -u

@@ -308,7 +308,10 @@ class VendingMachine:
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 4 ``` | ``` >>> feeling = 'love' >>> course = '61A!' >>> f'I {feeling} {course}' 'I love 61A!' ``` |
+> ```python
+ >>> feeling = 'love' >>> course = '61A!' >>> f'I {feeling} {course}' 'I love 61A!'
+> ```
+
 
 Use Ok to test your code:
 
@@ -320,7 +323,10 @@ python3 ok -q VendingMachine✂️
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 ``` | ``` >>> ten, twenty, thirty = 10, 'twenty', [30] >>> '{0} plus {1} is {2}'.format(ten, twenty, thirty) '10 plus twenty is [30]' ``` |
+> ```python
+ >>> ten, twenty, thirty = 10, 'twenty', [30] >>> '{0} plus {1} is {2}'.format(ten, twenty, thirty) '10 plus twenty is [30]'
+> ```
+
 
 ## Submit
 

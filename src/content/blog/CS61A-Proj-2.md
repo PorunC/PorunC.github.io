@@ -301,7 +301,10 @@ Here are some examples:
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 4 5 ``` | ``` >>> limit = 4 >>> sphinx_swaps("roses", "arose", limit) > limit True >>> sphinx_swaps("rosesabcdefghijklm", "arosenopqrstuvwxyz", limit) > limit True ``` |
+> ```python
+ >>> limit = 4 >>> sphinx_swaps("roses", "arose", limit) > limit True >>> sphinx_swaps("rosesabcdefghijklm", "arosenopqrstuvwxyz", limit) > limit True
+> ```
+
 
 Before writing any code, unlock the tests to verify your understanding of the question:
 
@@ -354,7 +357,10 @@ You may modify the template however you want or delete it entirely.
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 4 5 ``` | ``` >>> limit = 2 >>> minimum_mewtations("ckiteus", "kittens", limit) > limit True >>> minimum_mewtations("ckiteusabcdefghijklm", "kittensnopqrstuvwxyz", limit) > limit True ``` |
+> ```python
+ >>> limit = 2 >>> minimum_mewtations("ckiteus", "kittens", limit) > limit True >>> minimum_mewtations("ckiteusabcdefghijklm", "kittensnopqrstuvwxyz", limit) > limit True
+> ```
+
 
 Before writing any code, unlock the tests to verify your understanding of the question:
 
@@ -432,7 +438,10 @@ You can upload a message to the multiplayer server by calling the `upload` funct
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` {'id': 1, 'progress': 0.6} ``` |
+> ```
+ {'id': 1, 'progress': 0.6}
+> ```
+
 
 Before writing any code, unlock the tests to verify your understanding of the question:
 

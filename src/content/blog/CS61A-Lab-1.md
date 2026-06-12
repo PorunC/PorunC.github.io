@@ -22,7 +22,10 @@ excerpt: >-
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q control -u ``` |
+> ```
+ python3 ok -q control -u
+> ```
+
 >
 > **Hint**: Make sure your `while` loop conditions eventually evaluate to a false value, or they’ll never stop! Typing `Ctrl-C` will stop infinite loops in the interpreter.
 
@@ -101,7 +104,10 @@ ______
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q short-circuit -u✂️ ``` |
+> ```
+ python3 ok -q short-circuit -u✂️
+> ```
+
 
 ```plaintext
 >>> True and 13
@@ -300,7 +306,10 @@ python3 ok --submit
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q if-statements -u✂️ ``` |
+> ```
+ python3 ok -q if-statements -u✂️
+> ```
+
 >
 > **Hint**: `print` (unlike `return`) does *not* cause the function to exit.
 

@@ -188,7 +188,10 @@ Let’s understand and modify the functionality of this BNF with a few questions
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q wwpd-bnf -u ``` |
+> ```
+ python3 ok -q wwpd-bnf -u
+> ```
+
 
 ## Submit
 

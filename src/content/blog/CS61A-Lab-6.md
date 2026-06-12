@@ -79,7 +79,10 @@ You can find the unlocking questions below.
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q wwpd-car -u✂️ ``` |
+> ```
+ python3 ok -q wwpd-car -u✂️
+> ```
+
 >
 > **Important:** For all WWPD questions, type `Function` if you believe the answer is `<function...>`, `Error` if it errors, and `Nothing` if nothing is displayed.
 

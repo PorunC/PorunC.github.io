@@ -20,7 +20,10 @@ excerpt: >-
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q list-mutation -u✂️ ``` |
+> ```
+ python3 ok -q list-mutation -u✂️
+> ```
+
 >
 > **Important:** For all WWPD questions, type `Function` if you believe the answer is `<function...>`, `Error` if it errors, and `Nothing` if nothing is displayed.
 
@@ -137,7 +140,10 @@ Make sure your solution does not mutate the input list.
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 4 ``` | ``` >>> type(3) == list False >>> type([1, 2, 3]) == list True ``` |
+> ```python
+ >>> type(3) == list False >>> type([1, 2, 3]) == list True
+> ```
+
 
 ```python
 def flatten(s):

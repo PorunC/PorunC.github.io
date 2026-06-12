@@ -119,7 +119,10 @@ python3 ok -q match_time✂️
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 ``` | ``` ?start: link -- replace link with tree_node for the next question ``` |
+> ```
+ ?start: link -- replace link with tree_node for the next question
+> ```
+
 
 In this problem, we’re going to define a BNF that parses integer Linked Lists created in Python. We won’t be handling `Link.empty`.
 

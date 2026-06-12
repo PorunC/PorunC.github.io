@@ -82,7 +82,10 @@ Your job in this part is to implement the `create_generator`, `__init__`, and `p
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 4 5 6 7 ``` | ``` >>> iterator = iter([1, 2]) >>> next(iterator) # Here, there is no default arg given. 1 >>> next(iterator, 5) # Here, there is a default arg given, but not used. 2 >>> next(iterator, 5) # The iterator is exhausted, so next returns default. 5 ``` |
+> ```python
+ >>> iterator = iter([1, 2]) >>> next(iterator) # Here, there is no default arg given. 1 >>> next(iterator, 5) # Here, there is a default arg given, but not used. 2 >>> next(iterator, 5) # The iterator is exhausted, so next returns default. 5
+> ```
+
 >
 > For more about `next`, feel free to read through the [`next` Python documentation](https://docs.python.org/3/library/functions.html#next).
 
@@ -100,7 +103,10 @@ You can reference this function in your implementations for `__init__` and `pop_
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 3 4 5 ``` | ``` >>> gen = some_generator_function() >>> next(gen) # Returns the first yield from some_generator_function >>> next(gen) # Returns the next yield from some_generator_function ``` |
+> ```python
+ >>> gen = some_generator_function() >>> next(gen) # Returns the first yield from some_generator_function >>> next(gen) # Returns the next yield from some_generator_function
+> ```
+
 
 #### `__init__`
 
@@ -175,7 +181,10 @@ When we refer to combinations here, we are referring to both call expressions an
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 ``` | ``` >>> EOL_TOKEN This is a token representing the end of a line. ``` |
+> ```python
+ >>> EOL_TOKEN This is a token representing the end of a line.
+> ```
+
 
 Your job in this part is to write the parsing functionality, which consists of two mutually recursive functions: `scheme_read` and `read_tail`. Each function takes in a single `src` parameter, which is a `Buffer` instance.
 

@@ -22,7 +22,10 @@ excerpt: >-
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q squared-virfib-wwpd -u✂️ ``` |
+> ```
+ python3 ok -q squared-virfib-wwpd -u✂️
+> ```
+
 
 > **Hint:** If you are stuck, try drawing out the recursive call tree. See 02/11’s Lecture ([Tree Recursion](https://cs61a.org/lecture/lec10/)) for more information.
 

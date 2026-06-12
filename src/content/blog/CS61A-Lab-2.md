@@ -47,13 +47,19 @@ Calling `curry_add(1)` returns a new function which only performs the addition o
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q lambda -u✂️ ``` |
+> ```
+ python3 ok -q lambda -u✂️
+> ```
+
 >
 > As a reminder, the following two lines of code will not display anything in the Python interpreter when executed:
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 2 ``` | ``` >>> x = None >>> x ``` |
+> ```python
+ >>> x = None >>> x
+> ```
+
 
 ```plaintext
 >>> lambda x: x  # A lambda expression with one parameter x
@@ -124,7 +130,10 @@ ______
 >
 > |  |  |
 > | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q hof-wwpd -u✂️ ``` |
+> ```
+ python3 ok -q hof-wwpd -u✂️
+> ```
+
 
 ```plaintext
 >>> def even(f):

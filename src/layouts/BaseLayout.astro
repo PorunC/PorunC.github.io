@@ -65,6 +65,100 @@ const canonical = new URL(Astro.url.pathname, SITE.url).href;
         svg: { fontCache: 'global' },
       };
     </script>
+    <script is:inline>
+      (() => {
+        const copyIcon = `
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span class="visually-hidden">复制代码</span>
+        `;
+        const doneIcon = `
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20 6 9 17l-5-5"></path>
+          </svg>
+          <span class="visually-hidden">已复制</span>
+        `;
+
+        function fallbackCopy(text) {
+          const textarea = document.createElement('textarea');
+          textarea.value = text;
+          textarea.setAttribute('readonly', '');
+          textarea.style.position = 'fixed';
+          textarea.style.top = '-1000px';
+          document.body.append(textarea);
+          textarea.select();
+          document.execCommand('copy');
+          textarea.remove();
+        }
+
+        async function writeClipboard(text) {
+          if (navigator.clipboard?.writeText && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+          }
+          fallbackCopy(text);
+        }
+
+        function enhanceCodeBlocks() {
+          document.querySelectorAll('.article-body pre:not(.mermaid):not([data-copy-ready])').forEach((pre) => {
+            const text = pre.querySelector('code')?.innerText ?? pre.innerText;
+            if (!text.trim()) return;
+
+            pre.setAttribute('data-copy-ready', 'true');
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'code-block';
+            pre.parentNode?.insertBefore(wrapper, pre);
+            wrapper.append(pre);
+
+            const button = document.createElement('button');
+            button.className = 'code-copy-btn';
+            button.type = 'button';
+            button.title = '复制代码';
+            button.setAttribute('aria-label', '复制代码');
+            button.innerHTML = copyIcon;
+            wrapper.append(button);
+
+            let timer;
+            button.addEventListener('click', async () => {
+              try {
+                await writeClipboard(text.replace(/\n$/, ''));
+                button.classList.add('copied');
+                button.title = '已复制';
+                button.setAttribute('aria-label', '已复制');
+                button.innerHTML = doneIcon;
+                clearTimeout(timer);
+                timer = window.setTimeout(() => {
+                  button.classList.remove('copied');
+                  button.title = '复制代码';
+                  button.setAttribute('aria-label', '复制代码');
+                  button.innerHTML = copyIcon;
+                }, 1600);
+              } catch {
+                button.classList.add('failed');
+                button.title = '复制失败';
+                button.setAttribute('aria-label', '复制失败');
+                clearTimeout(timer);
+                timer = window.setTimeout(() => {
+                  button.classList.remove('failed');
+                  button.title = '复制代码';
+                  button.setAttribute('aria-label', '复制代码');
+                }, 1600);
+              }
+            });
+          });
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', enhanceCodeBlocks, { once: true });
+        } else {
+          enhanceCodeBlocks();
+        }
+        document.addEventListener('astro:page-load', enhanceCodeBlocks);
+      })();
+    </script>
     <script async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
   </body>
 </html>
@@ -371,9 +465,78 @@ const canonical = new URL(Astro.url.pathname, SITE.url).href;
     border: 1px solid var(--line);
     border-radius: 10px;
     background: var(--code-bg);
-    padding: 18px;
+    padding: 18px 58px 18px 18px;
     line-height: 1.58;
     font-size: 0.9rem;
+  }
+
+  .article-body .code-block {
+    position: relative;
+    max-width: 100%;
+    margin: 1.4rem 0;
+  }
+
+  .article-body .code-block pre {
+    margin: 0;
+  }
+
+  .code-copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1;
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid rgba(148, 163, 184, 0.55);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    color: #475569;
+    cursor: pointer;
+    transition:
+      background 0.16s ease,
+      border-color 0.16s ease,
+      color 0.16s ease,
+      transform 0.16s ease;
+  }
+
+  .code-copy-btn:hover,
+  .code-copy-btn:focus-visible {
+    border-color: #99c8c1;
+    background: #ffffff;
+    color: var(--accent);
+  }
+
+  .code-copy-btn:active {
+    transform: scale(0.94);
+  }
+
+  .code-copy-btn.copied {
+    border-color: #a7d8ca;
+    background: #e7f4f1;
+    color: var(--accent);
+  }
+
+  .code-copy-btn.failed {
+    border-color: #f0b4a6;
+    background: #fff2ee;
+    color: #b45309;
+  }
+
+  .code-copy-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    clip-path: inset(50%);
   }
 
   .article-body code {

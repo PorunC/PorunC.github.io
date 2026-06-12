@@ -299,8 +299,7 @@ Here are some examples:
 >
 > These two calls to `sphinx_swaps` should take about the same amount of time to evaluate:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> limit = 4 >>> sphinx_swaps("roses", "arose", limit) > limit True >>> sphinx_swaps("rosesabcdefghijklm", "arosenopqrstuvwxyz", limit) > limit True
 > ```
@@ -355,8 +354,7 @@ You may modify the template however you want or delete it entirely.
 >
 > These two calls to `minimum_mewtations` should take about the same amount of time to evaluate:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> limit = 2 >>> minimum_mewtations("ckiteus", "kittens", limit) > limit True >>> minimum_mewtations("ckiteusabcdefghijklm", "kittensnopqrstuvwxyz", limit) > limit True
 > ```
@@ -436,8 +434,7 @@ You can upload a message to the multiplayer server by calling the `upload` funct
 
 > **Hint:** See the dictionary below for an example of a potential input into the `upload` function. This dictionary represents a player with `user_id` 1 and `progress` 0.6.
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  {'id': 1, 'progress': 0.6}
 > ```

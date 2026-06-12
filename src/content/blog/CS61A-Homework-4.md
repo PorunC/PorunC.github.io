@@ -306,8 +306,7 @@ class VendingMachine:
 
 > You may find Python’s formatted string literals, or [f-strings](https://docs.python.org/3/tutorial/inputoutput.html#fancier-output-formatting) useful. A quick example:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> feeling = 'love'
  >>> course = '61A!'
@@ -324,8 +323,7 @@ python3 ok -q VendingMachine✂️
 
 > If you’re curious about alternate methods of string formatting, you can also check out an older method of [Python string formatting](https://docs.python.org/2/library/stdtypes.html#str.format). A quick example:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> ten, twenty, thirty = 10, 'twenty', [30]
  >>> '{0} plus {1} is {2}'.format(ten, twenty, thirty)

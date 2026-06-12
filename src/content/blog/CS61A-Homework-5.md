@@ -193,8 +193,7 @@ Your implementation should mutate the original linked list. Do not create any ne
 
 > **Hint**: The built-in `isinstance` function may be useful.
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> s = Link(1, Link(2, Link(3, Link(4)))) >>> isinstance(s, Link) True >>> isinstance(s, int) False
 > ```
@@ -202,8 +201,7 @@ Your implementation should mutate the original linked list. Do not create any ne
 
 > **Construct Check**: The last doctest of this question ensures that you do not create new linked lists. If you are failing this doctest, ensure that you are not creating link lists by calling the constructor, i.e.
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  s = Link(1)
 > ```

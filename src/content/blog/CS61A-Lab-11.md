@@ -80,8 +80,7 @@ Your job in this part is to implement the `create_generator`, `__init__`, and `p
 
 > **Note:** For this question, you may want to use the built-in function `next` with its `default` argument. Here’s an example:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> iterator = iter([1, 2]) >>> next(iterator) # Here, there is no default arg given. 1 >>> next(iterator, 5) # Here, there is a default arg given, but not used. 2 >>> next(iterator, 5) # The iterator is exhausted, so next returns default. 5
 > ```
@@ -101,8 +100,7 @@ You can reference this function in your implementations for `__init__` and `pop_
 
 > Remember that generator functions can be used as follows:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> gen = some_generator_function() >>> next(gen) # Returns the first yield from some_generator_function >>> next(gen) # Returns the next yield from some_generator_function
 > ```
@@ -179,8 +177,7 @@ When we refer to combinations here, we are referring to both call expressions an
 
 > **Important:** While unlocking this problem, if the token yielded from the `Buffer` instance should be `EOL_TOKEN`, it will be displayed according to the `__repr__` function of the `EOL_TOKEN` class. Specifically, you would get:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> EOL_TOKEN This is a token representing the end of a line.
 > ```

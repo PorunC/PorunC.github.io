@@ -20,8 +20,7 @@ excerpt: >-
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q squared-virfib-wwpd -u✂️
 > ```

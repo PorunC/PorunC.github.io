@@ -414,8 +414,7 @@ However, your method needs to also include the reflective damage logic:
 
 > *Hint:* Damaging a bee may cause it to be removed from its place. If you iterate over a list, but change the contents of that list at the same time, you [may not visit all the elements](https://docs.python.org/3/tutorial/controlflow.html#for-statements). This can be prevented by making a > copy of the list. You can either use a list slice, or use the built-in `list` function.
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> lst = [1,2,3,4] >>> lst[:] [1, 2, 3, 4] >>> list(lst) [1, 2, 3, 4] >>> lst[:] is not lst and list(lst) is not lst True
 > ```
@@ -529,8 +528,7 @@ In addition, you will need to make the following modifications throughout your p
 
 > The constructor of `ContainerAnt.__init__` is implemented as follows:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  def __init__(self, *args, **kwargs):     super().__init__(*args, **kwargs)     self.ant_contained = None
 > ```

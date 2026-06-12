@@ -77,8 +77,7 @@ You can find the unlocking questions below.
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q wwpd-car -u✂️
 > ```

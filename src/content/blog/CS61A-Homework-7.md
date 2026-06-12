@@ -115,8 +115,7 @@ python3 ok -q kwlist_construct✂️
 
 > **Important**: For the following questions, your implementations should be invariant with respect to the abstraction used; that is, it should work regardless of whether `kwlist1` or `kwlist2` is used. Specifically, in the tests, we will define the abstraction `kwlist` as either `kwlist1` or `kwlist2`:
 >
-> |  |  |
-> | --- | --- |
+
 > ```scheme
  scm> (define make-kwlist make-kwlist1)
  scm> (define get-keys-kwlist get-keys-kwlist1)

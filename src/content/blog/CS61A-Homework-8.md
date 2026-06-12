@@ -117,8 +117,7 @@ python3 ok -q match_time✂️
 
 > For the next two problems, you can test your code on [code.cs61a.org](https://code.cs61a.org/) by adding the following line at the beginning before the problem’s skeleton code:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  ?start: link -- replace link with tree_node for the next question
 > ```

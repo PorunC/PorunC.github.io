@@ -67,8 +67,7 @@ Let’s familiarize ourselves with some built-in Scheme procedures and special f
 
 > Use Ok to unlock the following “What would Scheme print?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q combinations -u
 > ```

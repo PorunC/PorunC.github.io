@@ -22,8 +22,7 @@ Read over the `Link` class in `lab07.py`. Make sure you understand the doctests.
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q link -u
 > ```

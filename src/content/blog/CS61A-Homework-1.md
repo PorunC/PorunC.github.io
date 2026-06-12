@@ -105,8 +105,7 @@ def two_of_three(i, j, k):
 
 > **Hint:** Consider using the `max` or `min` function:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> max(1, 2, 3) 3 >>> min(-1, -2, -3) -3
 > ```

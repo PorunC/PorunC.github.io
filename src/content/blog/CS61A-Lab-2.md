@@ -48,8 +48,7 @@ Calling `curry_add(1)` returns a new function which only performs the addition o
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q lambda -u✂️
 > ```
@@ -57,8 +56,7 @@ Calling `curry_add(1)` returns a new function which only performs the addition o
 >
 > As a reminder, the following two lines of code will not display anything in the Python interpreter when executed:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> x = None >>> x
 > ```
@@ -133,8 +131,7 @@ ______
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q hof-wwpd -u✂️
 > ```

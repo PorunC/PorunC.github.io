@@ -445,8 +445,7 @@ scm> tau
 
 > Once you have completed Problem 5, make sure you submit using OK to receive full credit for the first checkpoint.
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok --submit
 > ```
@@ -454,8 +453,7 @@ scm> tau
 >
 > If you’d like to check your score so far, use the following command:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok --score
 > ```
@@ -777,8 +775,7 @@ If you have passed all of the required cases, you should see 1/1 points received
 
 > One you have completed Part III, make sure you submit using OK to receive full credit for the checkpoint.
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok --submit
 > ```
@@ -786,8 +783,7 @@ If you have passed all of the required cases, you should see 1/1 points received
 >
 > If you’d like to check your score so far, use the following command:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok --score
 > ```
@@ -952,8 +948,7 @@ python3 ok -q optional_1
 
 > We used `let` while defining `let-to-lambda`. What if we want to run `let-to-lambda` on an interpreter that does not recognize `let`? We can pass `let-to-lambda` to itself to rewrite itself into an *equivalent program without* `let`:
 >
-> |  |  |
-> | --- | --- |
+
 > ```scheme
  ;; The let-to-lambda procedure
  (define (let-to-lambda expr) ...)

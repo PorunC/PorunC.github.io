@@ -30,8 +30,7 @@ For each of the following regular expressions, suggest a string that would be fu
 
 > Use Ok to test your knowledge by choosing the best answer for each of the following questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q wwrm -u
 > ```

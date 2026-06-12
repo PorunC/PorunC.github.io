@@ -187,8 +187,7 @@ Let’s understand and modify the functionality of this BNF with a few questions
 
 > Use Ok to test your knowledge by choosing the best answer for each of the following “What Would PyCombinator Do” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q wwpd-bnf -u
 > ```

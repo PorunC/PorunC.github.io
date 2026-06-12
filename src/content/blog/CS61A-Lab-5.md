@@ -18,8 +18,7 @@ excerpt: >-
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q list-mutation -u✂️
 > ```
@@ -138,8 +137,7 @@ Make sure your solution does not mutate the input list.
 
 > **Hint**: you can check if something is a list by using the built-in `type` function. For example:
 >
-> |  |  |
-> | --- | --- |
+
 > ```python
  >>> type(3) == list False >>> type([1, 2, 3]) == list True
 > ```

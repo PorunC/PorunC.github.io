@@ -20,8 +20,7 @@ excerpt: >-
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q control -u
 > ```
@@ -102,8 +101,7 @@ ______
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q short-circuit -u✂️
 > ```
@@ -304,8 +302,7 @@ python3 ok --submit
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
+
 > ```
  python3 ok -q if-statements -u✂️
 > ```

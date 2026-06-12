@@ -32,18 +32,22 @@ Trying 104.196.238.229...
 Connected to cs144.keithw.org.
 Escape character is '^]'.
 ```
+```bash
 
 可以先在一个文件中输入以下字段复制粘贴进命令行，防止输入速度过慢导致断连
 
 ```yml
+```bash
 GET /hello HTTP/1.1
 Host: cs144.keithw.org
 Connection: close
 
 ```
+```bash
 
 输入完的响应如下：
 
+```bash
 ```bash
 HTTP/1.1 200 OK
 Date: Mon, 17 Jan 2022 06:35:25 GMT
@@ -58,34 +62,42 @@ Content-Type: text/plain
 Hello, CS144!
 Connection closed by foreign host.
 ```
+```bash
 
 ### 2.1.3 Assignment:
 
 在命令行中输入
 
 ```bash
+```bash
 telnet cs144.keithw.org http
 ```
+```bash
 
 出现
 
+```bash
 ```bash
 Trying 104.196.238.229...
 Connected to cs144.keithw.org.
 Escape character is '^]'.
 ```
+```bash
 
 接着输入
 
 ```yml
+```bash
 GET /lab0/misaka HTTP/1.1
 Host: cs144.keithw.org
 Connection: close
 
 ```
+```bash
 
 得到如下响应
 
+```bash
 ```bash
 HTTP/1.1 200 OK
 Date: Mon, 17 Jan 2022 06:46:16 GMT
@@ -100,11 +112,13 @@ Content-Type: text/plain
 Hello! You told us that your SUNet ID was "misaka". Please see the HTTP headers (above) for your secret code.
 Connection closed by foreign host.
 ```
+```bash
 
 ## 2.2 Send yourself an email
 
 由于没有sunetid,采用163邮箱进行代替
 
+```bash
 ```bash
 telnet smtp.163.com smtp
 Trying 220.181.12.11...
@@ -112,36 +126,41 @@ Connected to smtp.163.com.
 Escape character is '^]'.
 220 163.com Anti-spam GT for Coremail System (163com[xxxx])
 ```
+```bash
 
 和163邮箱打个招呼
 
 ```bash
+```bash
 helo 163.com
 ```
+```bash
 
 返回`250 OK`  
 邮箱账户登陆
 
 ```bash
+```bash
 auth login
-334 dXNlcm5hbWU6
+dXNlcm5hbWU6
 [输入163邮箱的base64编码格式]
-334 UGFzc3dvcmQ6
+UGFzc3dvcmQ6
 [输入base64编码格式的邮箱密码]
-235 Authentication successful
+Authentication successful
 MAIL FROM: <xxxxx@163.com> 	//表示发件人为 xxxxx@163.com
-250 Mail OK
+Mail OK
 RCPT TO: <xxxxx@qq.com>		//表示收件人为 xxxxx@qq.com
-250 Mail OK
+Mail OK
 DATA						//准备好发送数据了
-354 End data with <CR><LF>.<CR><LF>				
+End data with <CR><LF>.<CR><LF>				
 [邮件内容]
 .
-250 Mail OK queued as smtp14,EsCowAAX5WUxFuVhrJCNAg--.xxxxxx xxxxxxxxxx
+Mail OK queued as smtp14,EsCowAAX5WUxFuVhrJCNAg--.xxxxxx xxxxxxxxxx
 QUIT
-221 Bye
+Bye
 Connection closed by foreign host.
 ```
+```bash
 
 在收件邮箱中可以发现收到的邮件
 
@@ -150,38 +169,50 @@ Connection closed by foreign host.
 在命令行中输入：
 
 ```bash
+```bash
 netcat -v -l -p 9090
 ```
+```bash
 
 出现如下问题
 
 ```bash
+```bash
 netcat: getnameinfo: Temporary failure in name resolution
 ```
+```bash
 
 解决方法：
 
 ```bash
+```bash
 sudo vim /etc/resolv.conf
 ```
+```bash
 
 添加以下内容并保存
 
 ```plaintext
+```bash
 namespace 8.8.8.8
 ```
+```bash
 
 在一个窗口输入：
 
 ```bash
+```bash
 netcat -v -l -p 9090
 ```
+```bash
 
 新的窗口输入
 
 ```bash
+```bash
 telnet localhost 9090
 ```
+```bash
 
 即可实现`netcat`窗口对`telnet`窗口的监听，关闭`telnet`窗口就可以关闭这个监听程序  
 ![](https://img-blog.csdnimg.cn/8cabb2454d964f648194eae091268e53.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBATUlOR2dvUw==,size_20,color_FFFFFF,t_70,g_se,x_16)
@@ -191,6 +222,7 @@ telnet localhost 9090
 ## 3.1 Let’s get started—fetching and building the starter code
 
 ```bash
+```bash
 git clone https://github.com/cs144/sponge
 git checkout -b master origin/master
 mkdir build && cd build
@@ -198,6 +230,7 @@ cmake ..
 make format
 make -j4 && make check_lab0
 ```
+```bash
 
 ## 3.2
 
@@ -216,6 +249,7 @@ make -j4 && make check_lab0
 `file descriptor.hh`
 
 ```cpp
+```bash
 //! Write a string, possibly blocking until all is written
 size_t write(const char *str, const bool write_all = true) { return write(BufferViewList(str), write_all); }
 
@@ -225,10 +259,12 @@ size_t write(const std::string &str, const bool write_all = true) { return write
 //! Write a buffer (or list of buffers), possibly blocking until all is written
 size_t write(BufferViewList buffer, const bool write_all = true);
 ```
+```bash
 
 `socket.hh`:
 
 ```cpp
+```bash
 //! Connect a socket to a specified peer address with [connect(2)](\ref man2::connect)
 //使用[CONNECT(2)](\ref Man2：：Connect)将socket连接到指定的对等地址
 void connect(const Address &address);
@@ -237,10 +273,12 @@ void connect(const Address &address);
 //通过[Shutdown(2)](\ref Man2：：Shutdown)关闭socket
 void shutdown(const int how);
 ```
+```bash
 
 `address`：
 
 ```cpp
+```bash
 //! Construct by resolving a hostname and servicename.
 // 通过 主机名 如 “cs144.keithw.org” 和 服务名 如 “http” 进行构造
 Address(const std::string &hostname, const std::string&service);
@@ -253,6 +291,7 @@ Address(const std::string &ip, const std::uint16_t port = 0);
 // 通过 原始socket地址 和 地址长度 进行构造
 Address(const sockaddr *addr, const std::size_t size);
 ```
+```bash
 
 ## 3.4 Writing webget
 
@@ -272,6 +311,7 @@ webget是一个使用操作系统的TCP支持和流套接字抽象在Internet上
 `/cs144/sponge/apps/webget.cc`
 
 ```cpp
+```bash
 void get_URL(const string &host, const string &path) {
     // Your code here.
 
@@ -304,13 +344,17 @@ void get_URL(const string &host, const string &path) {
     // cerr << "Warning: get_URL() has not been implemented yet.\n";
 }
 ```
+```bash
 
 5. make
 
 ```bash
+```bash
 $ make
 ```
+```bash
 
+```bash
 ```bash
 [ 33%] Built target sponge
 [ 40%] Built target webget
@@ -324,15 +368,19 @@ $ make
 [ 93%] Built target socket_dt
 [100%] Built target address_dt
 ```
+```bash
 
 6. 测试
 
 ```bash
+```bash
 $ ./apps/webget cs144.keithw.org /hello
 ```
+```bash
 
 结果：
 
+```bash
 ```bash
 HTTP/1.1 200 OK
 Date: Mon, 17 Jan 2022 09:16:30 GMT
@@ -345,15 +393,19 @@ Content-Type: text/plain
 
 Hello, CS144!
 ```
+```bash
 
 7. make check\_webget
 
 ```bash
+```bash
 $ make check_webget
 ```
+```bash
 
 结果
 
+```bash
 ```bash
 [100%] Testing webget...
 Test project /home/ubuntu/cs144/sponge/build
@@ -365,8 +417,10 @@ Test project /home/ubuntu/cs144/sponge/build
 Total Test time (real) =   1.05 sec
 [100%] Built target check_webget
 ```
+```bash
 
 ```cpp
+```bash
 //! \brief A reference-counted read-only string that can discard bytes from the front
 class Buffer {
   private:
@@ -406,6 +460,7 @@ class Buffer {
 
 };
 ```
+```bash
 
 这是一个只读的字符串类 `Buffer`，具有自动引用计数的特性。该类可以从字符串前面丢弃一些字节。
 
@@ -425,6 +480,7 @@ class Buffer {
 - `remove_prefix(size_t n)`：丢弃当前 `Buffer` 实例所持有字符串的前 `n` 个字符，将 `_starting_offset` 成员变量加上 `n`。这个方法不需要进行字符串的拷贝或移动操作，因为 `Buffer` 类只是一个只读的字符串容器，不需要对其中的字符串做任何修改。同时，如果当前 `Buffer` 实例是多个实例中的一个共享同一个字符串，那么在所有引用该字符串的 `Buffer` 实例都丢弃了前 `n` 个字符之后，原字符串对象才会被释放。
 
 ```cpp
+```bash
 
 //! \brief A reference-counted discontiguous string that can discard bytes from the front
 //! \note Used to model packets that contain multiple sets of headers
@@ -471,6 +527,7 @@ class BufferList {
     std::string concatenate() const;
 };
 ```
+```bash
 
 这段代码定义了一个叫做`BufferList`的类，它表示了一个由多个`Buffer`组成的不连续的字符串。这个类可以从字符串前面丢弃字节。它主要用来表示包含多组头部和有效载荷的数据包，它允许我们在不复制有效载荷的情况下前置头部。
 
@@ -487,6 +544,7 @@ class BufferList {
 - `std::string concatenate() const`：将当前BufferList中的所有Buffer连接起来，并返回一个新的std::string对象。
 
 ```cpp
+```bash
 
 //! \brief A non-owning temporary view (similar to std::string_view) of a discontiguous string
 class BufferViewList {
@@ -521,6 +579,7 @@ class BufferViewList {
     std::vector<iovec> as_iovecs() const;
 };
 ```
+```bash
 
 这段代码定义了一个名为 `BufferViewList` 的类，它是一个临时的、非拥有者的视图，类似于 `std::string_view`，用于表示一个不连续的字符串。该类的实例可以从不同的来源构造，包括一个 `std::string` 对象、一个 C 风格的字符串指针、一个 `BufferList` 对象，以及一个 `std::string_view` 对象。
 
@@ -533,6 +592,7 @@ class BufferViewList {
 下面模仿 `BufferList` 编写一个 `BufferPlus` 类：
 
 ```cpp
+```bash
 class BufferPlus {
   private:
     std::shared_ptr<std::string> _storage{};
@@ -587,6 +647,7 @@ class BufferPlus {
     void remove_suffix(const size_t n);
 };
 ```
+```bash
 
 `BufferPlus` 的 C++ 类。它是一个字符串类，用于表示字符串，并提供了许多有用的操作。下面是这个类的主要特性：
 
@@ -608,6 +669,7 @@ class BufferPlus {
 “byte\_stream.hh”
 
 ```cpp
+```bash
 #ifndef SPONGE_LIBSPONGE_BYTE_STREAM_HH
 #define SPONGE_LIBSPONGE_BYTE_STREAM_HH
 
@@ -704,6 +766,7 @@ class ByteStream {
 
 #endif  // SPONGE_LIBSPONGE_BYTE_STREAM_HH
 ```
+```bash
 
 它代表了一个按顺序排列的字节流。它有用于将字节写入流的“输入”端和从流的“输出”端读取字节的方法。
 
@@ -735,6 +798,7 @@ class ByteStream {
 “byte\_stream.cc”
 
 ```cpp
+```bash
 #include "byte_stream.hh"
 
 // Dummy implementation of a flow-controlled in-memory byte stream.
@@ -863,19 +927,3 @@ size_t ByteStream::bytes_read() const { return _bytes_read; }
 
 size_t ByteStream::remaining_capacity() const { return _capacity - buffer_size(); }
 ```
-
-- `ByteStream::ByteStream(const size_t capacity)`：构造函数，初始化缓存区大小为 `capacity`。
-- `size_t ByteStream::write(const string &data)`：写入数据，返回实际写入的字节数。如果缓存区已满，将只写入缓存区可容纳的字节数。如果数据未写完，将剩余部分保存到下一个缓存块中。
-- `size_t ByteStream::write(string &&data)`：移动语义版本的写入数据方法。
-- `size_t ByteStream::write(BufferPlus& data)`：从 `BufferPlus` 对象中写入数据。这里 `BufferPlus` 是一个扩展了 `std::string_view` 的类，用于在不拷贝数据的情况下操作字符串。
-- `string ByteStream::peek_output(const size_t len) const`：查看流中下一个 `len` 个字节的数据，但不会将数据弹出。
-- `void ByteStream::pop_output(const size_t len)`：从流中弹出 `len` 个字节的数据。
-- `std::string ByteStream::read(const size_t len)`：读取并弹出下一个 `len` 个字节的数据。
-- `void ByteStream::end_input()`：结束输入，表示输入流已经结束。
-- `bool ByteStream::input_ended() const`：判断输入流是否已经结束。
-- `size_t ByteStream::buffer_size() const`：返回当前缓存区的字节数。
-- `bool ByteStream::buffer_empty() const`：判断缓存区是否为空。
-- `bool ByteStream::eof() const`：判断是否已经读取完所有数据。
-- `size_t ByteStream::bytes_written() const`：返回已经写入的字节数。
-- `size_t ByteStream::bytes_read() const`：返回已经读取的字节数。
-- `size_t ByteStream::remaining_capacity() const`：返回缓存区的剩余容量。

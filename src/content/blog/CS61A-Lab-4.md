@@ -84,14 +84,17 @@ excerpt: >-
 ? 25
 -- OK! --
 ```
+```python
 
 ## Parsons Problems
 
 To work on these problems, open the Parsons editor:
 
 ```plaintext
+```python
 python3 parsons
 ```
+```python
 
 ### Q2: Line Stepper
 
@@ -101,6 +104,7 @@ Complete the function `line_stepper`, which returns the number of ways there are
 
 For example, here is a visualization of all possible paths if we start at `3` on the number line with `5` steps. At every step, we move either one step to the left of right, and we ultimately end each path at 0.
 
+```python
 ```python
 def line_stepper(start, k):
     """
@@ -127,6 +131,7 @@ def line_stepper(start, k):
         right = line_stepper(start + 1, k - 1)
         return left + right
 ```
+```python
 
 ## Code Writing Questions
 
@@ -136,6 +141,7 @@ Write a recursive implementation of `summation`, which takes a positive integer 
 
 **Important:** Use recursion; the tests will fail if you use any loops (for, while).
 
+```python
 ```python
 def summation(n, term):
     """Return the sum of numbers 1 through n (including n) wíth term applied to each number.
@@ -161,12 +167,15 @@ def summation(n, term):
     else:
         return term(n) + summation(n - 1, term)
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q summation✂️
 ```
+```python
 
 ### Q4: Insect Combinatorics
 
@@ -178,6 +187,7 @@ For example, the 2 by 2 grid has a total of two ways for the insect to move from
 
 *Hint:* What happens if we hit the top or rightmost edge?
 
+```python
 ```python
 def paths(m, n):
     """Return the number of paths from one corner of an
@@ -202,12 +212,15 @@ def paths(m, n):
         right = paths(m, n - 1)
         return up + right
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q paths✂️
 ```
+```python
 
 ### Q5: Pascal’s Triangle
 
@@ -216,17 +229,20 @@ Pascal’s triangle gives the coefficients of a binomial expansion; if you expan
 Here’s a part of the Pascal’s trangle:
 
 ```plaintext
+```python
 1
-1 1
-1 2 1
-1 3 3 1
-1 4 6 4 1
+1
+2 1
+3 3 1
+4 6 4 1
 ```
+```python
 
 Every number in Pascal’s triangle is defined as the sum of the item above it and the item above and to the left of it. Rows and columns are zero-indexed; that is, the first row is row 0 instead of 1 and the first column is column 0 instead of column 1. For example, the item at row 2, column 1 in Pascal’s triangle is 2.
 
 Now, define the procedure `pascal(row, column)` which takes a row and a column, and finds the value of the item at that position in Pascal’s triangle. Note that Pascal’s triangle is only defined at certain areas; use `0` if the item does not exist. For the purposes of this question, you may also assume that `row >= 0` and `column >= 0`.
 
+```python
 ```python
 def pascal(row, column):
     """Returns the value of the item in Pascal's Triangle
@@ -251,9 +267,11 @@ def pascal(row, column):
         return pascal(row - 1, column - 1) + pascal(row - 1, column)
     
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q pascal✂️
 ```

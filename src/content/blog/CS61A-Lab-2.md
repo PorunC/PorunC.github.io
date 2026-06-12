@@ -24,9 +24,11 @@ def curry_add(x):
         return x + y
     return add2
 ```
+```python
 
 Calling `curry_add(1)` returns a new function which only performs the addition once the returned function is called with the second addend.
 
+```python
 ```python
 >>> add_one = curry_add(1)
 >>> add_one(2)
@@ -34,6 +36,7 @@ Calling `curry_add(1)` returns a new function which only performs the addition o
 >>> add_one(4)
 5
 ```
+```python
 
 > Refer to the [textbook](http://composingprograms.com/pages/16-higher-order-functions.html#currying) for more details about currying.
 
@@ -62,6 +65,7 @@ Calling `curry_add(1)` returns a new function which only performs the addition o
 
 
 ```plaintext
+```python
 >>> lambda x: x  # A lambda expression with one parameter x
 
 ______
@@ -123,6 +127,7 @@ ______
 
 ______
 ```
+```python
 
 ### Q2: WWPD: Higher Order Functions
 
@@ -136,6 +141,7 @@ ______
 
 
 ```plaintext
+```python
 >>> def even(f):
 ...     def odd(x):
 ...         if x < 0:
@@ -190,19 +196,23 @@ ______
 
 ______
 ```
+```python
 
 ## Parsons Problems
 
 To work on these problems, open the Parsons editor:
 
 ```plaintext
+```python
 python3 parsons
 ```
+```python
 
 ### Q3: A Hop, a Skip, and a Jump
 
 Complete `hop`, which implements a curried version of the function `f(x, y) = y`.
 
+```python
 ```python
 def hop():
     """
@@ -218,6 +228,7 @@ def hop():
     return lambda x: lambda y: y
 
 ```
+```python
 
 ### Q4: Digit Index Factory
 
@@ -225,6 +236,7 @@ Complete the function `digit_index_factory`, which takes in two integers `k` and
 
 Note that `0` is considered to have no digits (not even `0`).
 
+```python
 ```python
 def digit_index_factory(num, k):
     """
@@ -252,6 +264,7 @@ def digit_index_factory(num, k):
             num //= 107
         return lambda: -1
 ```
+```python
 
 ## Coding Practice
 
@@ -263,6 +276,7 @@ Write a function `lambda_curry2` that will curry any two argument function using
 
 > **If the syntax check isn’t passing:** Make sure you’ve removed the line containing `"***YOUR CODE HERE***"` so that it doesn’t get treated as part of the function for the syntax check.
 
+```python
 ```python
 def lambda_curry2(func):
     """
@@ -282,24 +296,28 @@ def lambda_curry2(func):
     "*** YOUR CODE HERE ***"
     return lambda x: lambda y: func(x, y)
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q lambda_curry2✂️
 ```
+```python
 
 ### Q6: Count van Count
 
 Consider the following implementations of `count_factors` and `count_primes`:
 
 ```python
+```python
 def count_factors(n):
     """Return the number of positive factors that n has.
     >>> count_factors(6)
-    4   # 1, 2, 3, 6
+# 1, 2, 3, 6
     >>> count_factors(4)
-    3   # 1, 2, 4
+# 1, 2, 4
     """
     i = 1
     count = 0
@@ -312,9 +330,9 @@ def count_factors(n):
 def count_primes(n):
     """Return the number of prime numbers up to and including n.
     >>> count_primes(6)
-    3   # 2, 3, 5
+# 2, 3, 5
     >>> count_primes(13)
-    6   # 2, 3, 5, 7, 11, 13
+# 2, 3, 5, 7, 11, 13
     """
     i = 1
     count = 0
@@ -327,9 +345,11 @@ def count_primes(n):
 def is_prime(n):
     return count_factors(n) == 2 # only factors are 1 and n
 ```
+```python
 
 The implementations look quite similar! Generalize this logic by writing a function `count_cond`, which takes in a two-argument predicate function `condition(n, i)`. `count_cond` returns a one-argument function that takes in `n`, which counts all the numbers from 1 to `n` that satisfy `condition` when called.
 
+```python
 ```python
 def count_cond(condition):
     """Returns a function with one parameter N that counts all the numbers from
@@ -369,20 +389,25 @@ def count_cond(condition):
         return cnt
     return counter
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q count_cond✂️
 ```
+```python
 
 ## Submit
 
 Make sure to submit this assignment by running:
 
 ```plaintext
+```python
 python3 ok --submit
 ```
+```python
 
 # Optional Questions
 
@@ -390,6 +415,7 @@ python3 ok --submit
 
 Write a function that takes in two single-argument functions, `f` and `g`, and returns another **function** that has a single parameter `x`. The returned function should return `True` if `f(g(x))` is equal to `g(f(x))`. You can assume the output of `g(x)` is a valid input for `f` and vice versa. Try to use the `composer` function defined below for more HOF practice.
 
+```python
 ```python
 def composer(f, g):
     """Return the composition function which given x, computes f(g(x)).
@@ -427,12 +453,15 @@ def composite_identity(f, g):
         return composer(f, g)(x) == composer(g, f)(x)
     return identity
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q composite_identity✂️
 ```
+```python
 
 ### Q8: I Heard You Liked Functions…
 
@@ -447,6 +476,7 @@ Define a function `cycle` that takes in three functions `f1`, `f2`, `f3`, as arg
 
 *Hint*: most of the work goes inside the most nested function.
 
+```python
 ```python
 def cycle(f1, f2, f3):
     """Returns a function that is itself a higher-order function.
@@ -483,9 +513,11 @@ def cycle(f1, f2, f3):
         return ret
     return ref_fn
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q cycle
 ```

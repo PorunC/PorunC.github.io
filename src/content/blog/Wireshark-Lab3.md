@@ -61,13 +61,19 @@ excerpt: >-
 ```
  Non-authoritative answer: www.baidu.com	canonical name = www.a.shifen.com. Name:	www.a.shifen.com Address: 182.61.200.6 Name:	www.a.shifen.com Address: 182.61.200.7
 ```
+```
 
 2. 运行*nslookup*来确定一个欧洲的大学的权威DNS服务器。
 
 
 
 ```bash
- nslookup -type=NS cam.ac.uk Server:		 Address:	  Non-authoritative answer: cam.ac.uk	nameserver = auth0.dns.cam.ac.uk. cam.ac.uk	nameserver = ns1.mythic-beasts.com. cam.ac.uk	nameserver = dns0.eng.cam.ac.uk. cam.ac.uk	nameserver = ns3.mythic-beasts.com. cam.ac.uk	nameserver = dns0.cl.cam.ac.uk. cam.ac.uk	nameserver = ns2.ic.ac.uk.  Authoritative answers can be found from:
+```
+ nslookup -type=NS cam.ac.uk
+Server:		 Address:
+Non-authoritative answer: cam.ac.uk	nameserver = auth0.dns.cam.ac.uk. cam.ac.uk	nameserver = ns1.mythic-beasts.com. cam.ac.uk	nameserver = dns0.eng.cam.ac.uk. cam.ac.uk	nameserver = ns3.mythic-beasts.com. cam.ac.uk	nameserver = dns0.cl.cam.ac.uk. cam.ac.uk	nameserver = ns2.ic.ac.uk.
+Authoritative answers can be found from:
+```
 ```
 
 3. 运行*nslookup*，使用问题2中一个已获得的DNS服务器，来查询Yahoo!邮箱的邮件服务器。它的IP地址是什么？
@@ -77,7 +83,11 @@ excerpt: >-
 
 
 ```bash
- $ nslookup mail.yahoo.com     Server:		 Address:	  Non-authoritative answer: mail.yahoo.com	canonical name = edge.gycpi.b.yahoodns.net. Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.7 Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.8
+```
+ $ nslookup mail.yahoo.com
+Server:		 Address:
+Non-authoritative answer: mail.yahoo.com	canonical name = edge.gycpi.b.yahoodns.net. Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.7 Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.8
+```
 ```
 
 
@@ -86,7 +96,10 @@ excerpt: >-
 
 
 ```bash
- nslookup mail.yahoo.com dns0.eng.cam.ac.uk Server:		dns0.eng.cam.ac.uk Address:	129.169.8.8#53  ** server can't find mail.yahoo.com: REFUSED
+```
+ nslookup mail.yahoo.com dns0.eng.cam.ac.uk
+Server:		dns0.eng.cam.ac.uk Address:	129.169.8.8#53  ** server can't find mail.yahoo.com: REFUSED
+```
 ```
 
 
@@ -194,28 +207,23 @@ excerpt: >-
 回答下列问题：
 
 ```plaintext
+```
 $ nslookup www.aiit.or.kr bitsy.mit.edu
 ;; connection timed out; no servers could be reached
+```
 ```
 
 指令超时，使用作者提供的抓包结果进行分析：
 
 ```plaintext
+```
 http://gaia.cs.umass.edu/wireshark-labs/wireshark-traces.zip
+```
 ```
 
 对应文件：
 
 ```plaintext
+```
 dns-ethereal-trace-4
 ```
-
-20. DNS查询消息发送到的IP地址是什么？这是您的默认本地DNS服务器的IP地址吗？如果不是，这个IP地址是什么？
-    - Destination IP: 18.72.0.3
-21. 检查DNS查询消息。DNS查询是什么"Type"的？查询消息是否包含任何"answers"？
-    - Type：A， 不包含 answers
-    - ![](https://img-blog.csdnimg.cn/c22157f0e1dc48adaeae8aef5f0d52b1.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBATUlOR2dvUw==,size_20,color_FFFFFF,t_70,g_se,x_16)
-22. 检查DNS响应消息。提供了多少个"answers"？这些答案包含什么？
-    - 1个answers，包含主机的ip地址，类型等等。
-    - ![](https://img-blog.csdnimg.cn/f1bc7693ef274824bb0a11300f3f13f7.png?x-oss-process=image/watermark,type_d3F5LXplbmhlaQ,shadow_50,text_Q1NETiBATUlOR2dvUw==,size_20,color_FFFFFF,t_70,g_se,x_16)
-23. 提供屏幕截图。

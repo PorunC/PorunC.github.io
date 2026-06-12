@@ -22,6 +22,7 @@ excerpt: >-
 ```
  sudo apt-get install vsftpd
 ```
+```
 
 2. 修改登录和对匿名用户的设置
 
@@ -30,7 +31,9 @@ excerpt: >-
 
 
 ```
+```
  write_enable=YES             	//是否对登录用户开启写权限。属全局性设置。默认NO local_enable=YES             	//是否允许本地用户登录FTP服务器。默认为NO anonymous_enable=YES       		//设置是否允许匿名用户登录FTP服务器。默认为YES ftp_username=ftp                //定义匿名用户的账户名称，默认值为ftp。 no_anon_password=YES        	//匿名用户登录时是否询问口令。设置为YES，则不询问。默 认NO anon_world_readable_only=YES    //匿名用户是否允许下载可阅读的文档，默认为YES。 anon_upload_enable=YES      	//是否允许匿名用户上传文件。只有在write_enable设置 local_root=/var/ftp         	// 设置本地用户登录后所在的目录。默认配置文件中没有设置该项，此时用户登录FTP服务器后，所在的目录为该用户的主目录，对于root用户，则为/root目录。 anon_root=/var/ftp      		//设置匿名用户登录后所在的目录。若未指定，则默认为/var/ftp目录。 chroot_list_enable=YES          // 设置是否启用chroot_list_file配置项指定的用户列表文件。设置为YES则除了列在j/etc/vsftpd/chroot_list文件中的的帐号外，所有登录的用户都可以进入ftp根目录之外的目录。默认NO
+```
 ```
 
 
@@ -39,7 +42,9 @@ excerpt: >-
 
 
 ```
+```
  #write_enable=YES
+```
 ```
 
 
@@ -49,7 +54,9 @@ excerpt: >-
 
 
 ```
+```
  wget http://gaia.cs.umass.edu/wireshark-labs/alice.txt wget https://web.stanford.edu/class/cs144/vm_howto/setup_dev_env.sh
+```
 ```
 
 
@@ -105,7 +112,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    220 (vsFTPd 3.0.3)\r\n       Response code: Service ready for new user (220)       Response arg: (vsFTPd 3.0.3) [Current working directory: ]
+```
+ File Transfer Protocol (FTP)    220 (vsFTPd 3.0.3)
+       Response code: Service ready for new user (220)       Response arg: (vsFTPd 3.0.3) [Current working directory: ]
+```
 ```
 
 
@@ -115,7 +125,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    USER misaka\r\n       Request command: USER       Request arg: misaka
+```
+ File Transfer Protocol (FTP)    USER misaka
+       Request command: USER       Request arg: misaka
+```
 ```
 
 3. 49号报文：输入用户名后，服务器响应状态码 331， 表示要求密码
@@ -123,7 +136,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    331 Please specify the password.\r\n       Response code: User name okay, need password (331)       Response arg: Please specify the password.
+```
+ File Transfer Protocol (FTP)    331 Please specify the password.
+       Response code: User name okay, need password (331)       Response arg: Please specify the password.
+```
 ```
 
 4. 52号报文：客户端输入密码发送给服务器端，明文传输
@@ -131,7 +147,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    PASS ********\r\n       Request command: PASS       Request arg: ********
+```
+ File Transfer Protocol (FTP)    PASS ********
+       Request command: PASS       Request arg: ********
+```
 ```
 
 5. 54号报文：服务器端收到密码后，返回给客户端 230 号状态码，表示用户登录，请继续。
@@ -139,7 +158,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    230 Login successful.\r\n       Response code: User logged in, proceed (230)       Response arg: Login successful.
+```
+ File Transfer Protocol (FTP)    230 Login successful.
+       Response code: User logged in, proceed (230)       Response arg: Login successful.
+```
 ```
 
 
@@ -156,7 +178,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    PORT 192,168,0,101,231,218\r\n       Request command: PORT       Request arg: 192,168,0,101,231,218       Active IP address: 192.168.0.101       Active port: 59354 [Current working directory: ] [Command: LIST] [Command frame: 60]
+```
+ File Transfer Protocol (FTP)    PORT 192,168,0,101,231,218
+       Request command: PORT       Request arg: 192,168,0,101,231,218       Active IP address: 192.168.0.101       Active port: 59354 [Current working directory: ] [Command: LIST] [Command frame: 60]
+```
 ```
 
 2. 58号报文：服务器端响应状态码200，表示命令没问题，在客户端显示为`200 PORT command successful. Consider using PASV.`
@@ -164,7 +189,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    200 PORT command successful. Consider using PASV.\r\n       Response code: Command okay (200)       Response arg: PORT command successful. Consider using PASV.
+```
+ File Transfer Protocol (FTP)    200 PORT command successful. Consider using PASV.
+       Response code: Command okay (200)       Response arg: PORT command successful. Consider using PASV.
+```
 ```
 
 3. 60号报文：客户端对服务器发起的命令为 `LIST`
@@ -176,7 +204,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)    LIST\r\n       Request command: LIST [Current working directory: ] [Command response frames: 1] [Command response bytes: 659] [Command response first frame: 66] [Command response last frame: 66] [Setup frame: 56]
+```
+ File Transfer Protocol (FTP)    LIST
+       Request command: LIST [Current working directory: ] [Command response frames: 1] [Command response bytes: 659] [Command response first frame: 66] [Command response last frame: 66] [Setup frame: 56]
+```
 ```
 
 4. 72号数据报：服务器发送给客户端的状态码为226，表示请求的文件操作成功，并正在关闭数据连接
@@ -184,7 +215,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     226 Directory send OK.\r\n         Response code: Closing data connection (226)         Response arg: Directory send OK.
+```
+ File Transfer Protocol (FTP)     226 Directory send OK.
+         Response code: Closing data connection (226)         Response arg: Directory send OK.
+```
 ```
 
 5. 66 号 数据帧如下所示，其中，红色方框内的内容与客户端显示的东西刚好对应，是明文传输  
@@ -211,7 +245,10 @@ excerpt: >-
 
 
 ```
- Transmission Control Protocol, Src Port: 59353, Dst Port: 21, Seq: 63, Ack: 192, Len: 28 File Transfer Protocol (FTP)     PORT 192,168,0,101,231,219\r\n         Request command: PORT         Request arg: 192,168,0,101,231,219         Active IP address: 192.168.0.101         Active port: 59355 [Current working directory: ] [Command response frames: 108] [Command response bytes: 155736] [Command response first frame: 95] [Command response last frame: 217] [Response duration: 303ms] [Response bitrate: 4111Kbps] [Setup frame: 85] [Command: PORT 192,168,0,101,231,219] [Command frame: 85]
+```
+ Transmission Control Protocol, Src Port: 59353, Dst Port: 21, Seq: 63, Ack: 192, Len: 28 File Transfer Protocol (FTP)     PORT 192,168,0,101,231,219
+         Request command: PORT         Request arg: 192,168,0,101,231,219         Active IP address: 192.168.0.101         Active port: 59355 [Current working directory: ] [Command response frames: 108] [Command response bytes: 155736] [Command response first frame: 95] [Command response last frame: 217] [Response duration: 303ms] [Response bitrate: 4111Kbps] [Setup frame: 85] [Command: PORT 192,168,0,101,231,219] [Command frame: 85]
+```
 ```
 
 2. 86号数据报：服务器端响应状态码200，表示命令没问题，在客户端显示为`200 PORT command successful. Consider using PASV.`
@@ -219,7 +256,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     200 PORT command successful. Consider using PASV.\r\n         Response code: Command okay (200)         Response arg: PORT command successful. Consider using PASV.
+```
+ File Transfer Protocol (FTP)     200 PORT command successful. Consider using PASV.
+         Response code: Command okay (200)         Response arg: PORT command successful. Consider using PASV.
+```
 ```
 
 3. 88号数据报：客户端发送给服务器端的FTP 命令为 STOR 表示接收数据并且在服务器站点保存为文件，`arg`为参数 ：`alice.txt`
@@ -227,7 +267,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     STOR alice.txt\r\n         Request command: STOR         Request arg: alice.txt
+```
+ File Transfer Protocol (FTP)     STOR alice.txt
+         Request command: STOR         Request arg: alice.txt
+```
 ```
 
 4. 92号数据报：服务器端发送给客户端的状态码为 150，表示文件状态正常并即将打开数据连接。
@@ -235,7 +278,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     150 Ok to send data.\r\n         Response code: File status okay; about to open data connection (150)         Response arg: Ok to send data.
+```
+ File Transfer Protocol (FTP)     150 Ok to send data.
+         Response code: File status okay; about to open data connection (150)         Response arg: Ok to send data.
+```
 ```
 
 5. 231号数据报：服务器发送给客户端的状态码为226，表示请求的文件操作成功，并正在关闭数据连接
@@ -243,7 +289,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     226 Transfer complete.\r\n         Response code: Closing data connection (226)         Response arg: Transfer complete.
+```
+ File Transfer Protocol (FTP)     226 Transfer complete.
+         Response code: Closing data connection (226)         Response arg: Transfer complete.
+```
 ```
 
 6. 数据流的报文简略如下：
@@ -251,7 +300,32 @@ excerpt: >-
 
 
 ```
-29.695807	192.168.0.101	192.168.0.112	FTP-DATA	1514	FTP Data: 1448 bytes (PORT) (PORT 192,168,0,101,231,219) 96	29.695812	192.168.0.101	192.168.0.112	FTP-DATA	1514	FTP Data: 1448 bytes (PORT) (PORT 192,168,0,101,231,219) 97	29.695814	192.168.0.101	192.168.0.112	FTP-DATA	1514	FTP Data: 1448 bytes (PORT) (PORT 192,168,0,101,231,219) ... 217	29.997952	192.168.0.101	192.168.0.112	FTP-DATA	866	FTP Data: 800 bytes (PORT) (PORT 192,168,0,101,231,219)
+```
+29.695807
+192.168.0.101
+192.168.0.112
+FTP-DATA
+1514
+FTP Data: 1448 bytes (PORT) (PORT 192,168,0,101,231,219) 96
+29.695812
+192.168.0.101
+192.168.0.112
+FTP-DATA
+1514
+FTP Data: 1448 bytes (PORT) (PORT 192,168,0,101,231,219) 97
+29.695814
+192.168.0.101
+192.168.0.112
+FTP-DATA
+1514
+FTP Data: 1448 bytes (PORT) (PORT 192,168,0,101,231,219) ... 217
+29.997952
+192.168.0.101
+192.168.0.112
+FTP-DATA
+866
+FTP Data: 800 bytes (PORT) (PORT 192,168,0,101,231,219)
+```
 ```
 
 
@@ -268,7 +342,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     PORT 192,168,0,101,231,220\r\n         Request command: PORT         Request arg: 192,168,0,101,231,220         Active IP address: 192.168.0.101         Active port: 59356
+```
+ File Transfer Protocol (FTP)     PORT 192,168,0,101,231,220
+         Request command: PORT         Request arg: 192,168,0,101,231,220         Active IP address: 192.168.0.101         Active port: 59356
+```
 ```
 
 2. 240号报文：服务器端响应状态码200，表示命令没问题，在客户端显示为`200 PORT command successful. Consider using PASV.`
@@ -276,7 +353,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     200 PORT command successful. Consider using PASV.\r\n         Response code: Command okay (200)         Response arg: PORT command successful. Consider using PASV.
+```
+ File Transfer Protocol (FTP)     200 PORT command successful. Consider using PASV.
+         Response code: Command okay (200)         Response arg: PORT command successful. Consider using PASV.
+```
 ```
 
 3. 242号报文: 客户端发送给服务器端的 `Request command` 为 `RETR`，`Request arg` 为 `setup_dev_env.sh`, 表示传输 `setup_dev_env.sh`文件副本
@@ -290,7 +370,10 @@ excerpt: >-
 
 
 ```
- Transmission Control Protocol, Src Port: 59353, Dst Port: 21, Seq: 135, Ack: 340, Len: 23 File Transfer Protocol (FTP)     RETR setup_dev_env.sh\r\n         Request command: RETR         Request arg: setup_dev_env.sh [Current working directory: ] [Command response frames: 2] [Command response bytes: 1515] [Command response first frame: 248] [Command response last frame: 249] [Response duration: 0ms] [Response bitrate: 4294967295Kbps] [Setup frame: 239]
+```
+ Transmission Control Protocol, Src Port: 59353, Dst Port: 21, Seq: 135, Ack: 340, Len: 23 File Transfer Protocol (FTP)     RETR setup_dev_env.sh
+         Request command: RETR         Request arg: setup_dev_env.sh [Current working directory: ] [Command response frames: 2] [Command response bytes: 1515] [Command response first frame: 248] [Command response last frame: 249] [Response duration: 0ms] [Response bitrate: 4294967295Kbps] [Setup frame: 239]
+```
 ```
 
 4. 247号报文：服务器的 `Response code` 表示文件状态正常，即将打开数据连接
@@ -300,7 +383,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     150 Opening BINARY mode data connection for setup_dev_env.sh (1515 bytes).\r\n         Response code: File status okay; about to open data connection (150)         Response arg: Opening BINARY mode data connection for setup_dev_env.sh (1515 bytes).
+```
+ File Transfer Protocol (FTP)     150 Opening BINARY mode data connection for setup_dev_env.sh (1515 bytes).
+         Response code: File status okay; about to open data connection (150)         Response arg: Opening BINARY mode data connection for setup_dev_env.sh (1515 bytes).
+```
 ```
 
 5. 255号报文:服务器发送给客户端的状态码为226，表示请求的文件操作成功，并正在关闭数据连接
@@ -308,7 +394,10 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     226 Transfer complete.\r\n         Response code: Closing data connection (226)         Response arg: Transfer complete.
+```
+ File Transfer Protocol (FTP)     226 Transfer complete.
+         Response code: Closing data connection (226)         Response arg: Transfer complete.
+```
 ```
 
 6. 在过滤规则中输入`ip.addr == 192.168.0.101 && ip.addr == 192.168.0.112 && ftp-data`，数据连接发送的报文如下：
@@ -316,7 +405,20 @@ excerpt: >-
 
 
 ```
-50.915641	192.168.0.112	192.168.0.101	FTP-DATA	1514	FTP Data: 1448 bytes (PORT) (RETR setup_dev_env.sh) 249	50.915641	192.168.0.112	192.168.0.101	FTP-DATA	133	FTP Data: 67 bytes (PORT) (RETR setup_dev_env.sh)
+```
+50.915641
+192.168.0.112
+192.168.0.101
+FTP-DATA
+1514
+FTP Data: 1448 bytes (PORT) (RETR setup_dev_env.sh) 249
+50.915641
+192.168.0.112
+192.168.0.101
+FTP-DATA
+133
+FTP Data: 67 bytes (PORT) (RETR setup_dev_env.sh)
+```
 ```
 
 
@@ -331,7 +433,9 @@ excerpt: >-
 
 
 ```
+```
  File Transfer Protocol (FTP)     QUIT\r\n         Request command: QUIT
+```
 ```
 
 2. 270号报文:服务器响应的`Response code` 为 221，表示服务器正在关闭连接，客户端显示 `221 Goodbye.`
@@ -339,185 +443,7 @@ excerpt: >-
 
 
 ```
- File Transfer Protocol (FTP)     221 Goodbye.\r\n         Response code: Service closing control connection (221)         Response arg: Goodbye.
 ```
-
-3. 在这之后服务器和客户端会经过一次四次挥手的过程关闭他们之间的通信
-
-   ![image-20220326232609750](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326232609750.png)
-
-### 四次挥手
-
-- 第一次挥手：
-
-  ![image-20220326233341641](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326233341641.png)
-
-  272号报文的信息：
-
-  - `Source IP Address`: 192.168.0.112
-  - `Destination IP Address`: 192.168.0.101
-  - `Source Port`: 21
-  - `Destination Port`: 59353
-  - `Fin`: 1
-  - `Acknowledgment Number`： 2006995353 ，164（relative ack number）
-  - `Sequence Number`：1380144531， 454 （relative sequence number）
-
-  ![image-20220326233552646](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326233552646.png)
-
-  TCP连接释放报文段首部中
-
-  - 终止位FIN和确认为ACK的值都被设置为1，表明这是一个TCP连接释放报文段，同时也对之前收到的报文段进行确认
-  - 序号seq字段的值设置为u，它等于TCP客户进程之前已传送过的数据的最后一个字节的序号加1
-  - 确认号ack字段的值设置为v，它等于TCP客户进程之前已收到的、数据的最后一个字节的序号加1
-- 第二次挥手：
-
-  ![image-20220326234431796](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326234431796.png)
-
-  273号报文的信息：
-
-  - `Source IP Address`: 192.168.0.101
-  - `Destination IP Address`: 192.168.0.112
-  - `Source Port`: 59353
-  - `Destination Port`: 21
-  - `Acknowledgment Number`： 1380144532 ，455（relative ack number）是 272号报文的 `Sequence Number + 1`
-  - `Sequence Number`：2006995353， 164 （relative sequence number）和 272号报文的`Acknowledgment Number`一致
-
-  ![image-20220327000355701](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220327000355701.png)
-
-  TCP服务器进程收到TCP连接释放报文段后，会发送一个普通的TCP确认报文段并进入关闭等待状态
-
-  普通的TCP确认报文段首部中
-
-  - 确认位ACK的值被设置为1，表明这是一个普通的TCP确认报文段
-  - 序号seq字段的值设置为v，它等于TCP服务器进程之前已传送过的数据的最后一个字节的序号加1，这也与之前收到的TCP连接释放报文段中的确认号匹配
-  - 确认号ack字段的值设置为u+1，这是对TCP连接释放报文段的确认
-
-  ![image-20220326235132461](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326235132461.png)
-
-  TCP客户进程收到TCP确认报文段后就进入终止等待2状态，等待TCP服务器进程发出的TCP连接释放报文段
-
-  若使用TCP服务器进程的应用进程已经没有数据要发送了，应用进程就通知其TCP服务器进程释放连接
-
-  由于TCP连接释放是由TCP客户进程主动发起的，因此TCP服务器进程对TCP连接的释放称为被动关闭连接
-- 第三次挥手：
-
-  ![image-20220326234502526](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326234502526.png)
-
-  274号报文的信息：
-
-  - `Source IP Address`: 192.168.0.101
-  - `Destination IP Address`: 192.168.0.112
-  - `Source Port`: 59353
-  - `Destination Port`: 21
-  - `Fin` ：1
-  - `Acknowledgment Number`： 1380144532 ，455（relative ack number）和 273 号报文的 `Acknowledgment Number` 一致
-  - `Sequence Number`：2006995353， 164 （relative sequence number）和 273 号报文的 `Sequence Number` 一致
-
-  ![image-20220326235159951](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326235159951.png)
-
-  TCP服务器进程发送TCP连接释放报文段并进入最后确认状态
-
-  该报文段首部中
-
-  - 终止位FIN和确认位ACK的值都被设置为1，表明这是一个TCP连接释放报文段，同时也对之前收到的报文段进行确认
-  - 序号seq字段的值为w，这是因为在半关闭状态下，TCP服务器进程可能又发送
-  - 确认号ack字段的值为u+1，这是对之前收到的TCP连接释放报文段的重复确认
-- 第四次挥手：
-
-  ![image-20220326234526383](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326234526383.png)
-
-  275号报文的信息：
-
-  - `Source IP Address`: 192.168.0.112
-  - `Destination IP Address`: 192.168.0.101
-  - `Source Port`: 21
-  - `Destination Port`: 59353
-  - `Acknowledgment Number`： 2006995354 ，165（relative ack number）是 274 号报文 的 `Sequence Number + 1`
-  - `Sequence Number`：1380144532， 455 （relative sequence number）和 274 号报文 的 `Acknowledgment Number` 一致
-
-  ![image-20220326235232827](https://cdn.jsdelivr.net/gh/Misaka-9982-coder/img_hosting/img/image-20220326235232827.png)
-
-  TCP客户进程收到TCP连接释放报文段后，必须针对该报文段发送普通的TCP确认报文段，之后进入时间等待状态
-
-  该报文段首部中
-
-  - 确认为ACK的值被设置为1，表明这是一个普通的TCP确认报文段
-  - 序号seq字段的值设置为u+1，这是因为TCP客户进程之前发送的TCP连接释放报文段虽然不携带数据，但要消耗掉一个序号
-  - 确认号ack字段的值设置为w+1，这是对所收到的TCP连接释放报文段的确认
-
-  TCP服务器进程收到该报文段后就进入关闭状态，而TCP客户进程还要进过2MSL后才能进入关闭状态
-
-## FTP命令：
-
-| 命令 | [RFC](https://zh.wikipedia.org/wiki/RFC) | 描述 |
-| --- | --- | --- |
-| ABOR |  | (ABORT)此命令使服务器终止前一个FTP服务命令以及任何相关数据传输。 |
-| ACCT |  | (ACCOUNT)此命令的参数部分使用一个Telnet字符串来指明用户的账户。 |
-| ADAT | [RFC 2228](https://tools.ietf.org/html/rfc2228) | (AUTHENTICATION/SECURITY DATA)认证/安全数据 |
-| ALLO |  | 为接收一个文件分配足够的磁盘空间 |
-| APPE |  | 增加 |
-| AUTH | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 认证/安全机制 |
-| CCC | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 清除命令通道 |
-| CDUP |  | 改变到父目录 |
-| CONF | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 机密性保护命令 |
-| CWD |  | 改变工作目录 |
-| DELE |  | 删除文件 |
-| ENC | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 隐私保护通道 |
-| EPRT | [RFC 2428](https://tools.ietf.org/html/rfc2428) | 为服务器指定要连接的扩展地址和端口 |
-| EPSV | [RFC 2428](https://tools.ietf.org/html/rfc2428) | 进入扩展被动模式 |
-| FEAT | [RFC 2389](https://tools.ietf.org/html/rfc2389) | 获得服务器支持的特性列表 |
-| HELP |  | 如果指定了命令，返回命令使用文档；否则返回一个通用帮助文档 |
-| LANG | [RFC 2640](https://tools.ietf.org/html/rfc2640) | 语言协商 |
-| LIST |  | 如果指定了文件或目录，返回其信息；否则返回当前工作目录的信息 |
-| LPRT | [RFC 1639](https://tools.ietf.org/html/rfc1639) | 为服务器指定要连接的长地址和端口 |
-| LPSV | [RFC 1639](https://tools.ietf.org/html/rfc1639) | 进入长被动模式 |
-| MDTM | [RFC 3659](https://tools.ietf.org/html/rfc3659) | 返回指定文件的最后修改时间 |
-| MIC | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 完整性保护命令 |
-| MKD |  | 创建目录 |
-| MLSD | [RFC 3659](https://tools.ietf.org/html/rfc3659) | 如果目录被命名，列出目录的内容 |
-| MLST | [RFC 3659](https://tools.ietf.org/html/rfc3659) | 提供命令行指定的对象的数据 |
-| MODE |  | 设定传输模式（流、块或压缩） |
-| NLST |  | 返回指定目录的文件名列表 |
-| NOOP |  | 无操作（哑包；通常用来保活） |
-| OPTS | [RFC 2389](https://tools.ietf.org/html/rfc2389) | 为特性选择选项 |
-| PASS |  | 认证密码 |
-| PASV |  | 进入被动模式 |
-| PBSZ | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 保护缓冲大小 |
-| PORT |  | 指定服务器要连接的地址和端口 |
-| PROT | [RFC 2228](https://tools.ietf.org/html/rfc2228) | 数据通道保护级别 |
-| PWD |  | 打印工作目录，返回主机的当前目录 |
-| QUIT |  | 断开连接 |
-| REIN |  | 重新初始化连接 |
-| REST |  | 从指定点重新开始传输 |
-| RETR |  | 传输文件副本 |
-| RMD |  | 删除目录 |
-| RNFR |  | 从…重命名 |
-| RNTO |  | 重命名到… |
-| SITE |  | 发送站点特殊命令到远端服务器 |
-| SIZE | [RFC 3659](https://tools.ietf.org/html/rfc3659) | 返回文件大小 |
-| SMNT |  | 挂载文件结构 |
-| STAT |  | 返回当前状态 |
-| STOR |  | 接收数据并且在服务器站点保存为文件 |
-| STOU |  | 唯一地保存文件 |
-| STRU |  | 设定文件传输结构 |
-| SYST |  | 返回系统类型 |
-| TYPE |  | 设定传输模式（[ASCII](https://zh.wikipedia.org/wiki/ASCII)/[二进制](https://zh.wikipedia.org/wiki/%E4%BA%8C%E8%BF%9B%E5%88%B6%E6%96%87%E4%BB%B6)). |
-| USER |  | 认证用户名 |
-| XCUP | [RFC 775](https://tools.ietf.org/html/rfc775) | 改变之当前工作目录的父目录 |
-| XMKD | [RFC 775](https://tools.ietf.org/html/rfc775) | 创建目录 |
-| XPWD | [RFC 775](https://tools.ietf.org/html/rfc775) | 打印当前工作目录 |
-| XRCP | [RFC 743](https://tools.ietf.org/html/rfc743) |  |
-| XRMD | [RFC 775](https://tools.ietf.org/html/rfc775) | 删除目录 |
-| XRSQ | [RFC 743](https://tools.ietf.org/html/rfc743) |  |
-| XSEM | [RFC 737](https://tools.ietf.org/html/rfc737) | 发送，否则邮件 |
-| XSEN | [RFC 737](https://tools.ietf.org/html/rfc737) | 发送到终端 |
-
-## FTP响应码：
-
-<https://www.w3.org/Protocols/rfc959/4_FileTransfer.html>
-
-## 参考资料
-
-- <https://en.wikipedia.org/wiki/File_Transfer_Protocol>
-- <https://www.w3.org/Protocols/rfc959/4_FileTransfer.html>
-- <http://docs.52im.net/extend/docs/book/tcpip/vol1/27/>
+ File Transfer Protocol (FTP)     221 Goodbye.
+         Response code: Service closing control connection (221)         Response arg: Goodbye.
+```

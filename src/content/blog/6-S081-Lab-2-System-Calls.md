@@ -62,10 +62,12 @@ excerpt: >-
 	$U/_zombie
 	$U/_trace
 ```
+```
 
 2. 修改 `user/user.h`，添加 trace 系统调用的函数原型。
 
 
+```
 ```
  // system calls int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -91,10 +93,12 @@ int uptime(void);
 int trace(int);
 // <--- Here!
 ```
+```
 
 3. 在 `user/usys.pl` 中添加对 trace 系统调用的支持。
 
 
+```
 ```
  entry("fork");
 entry("exit");
@@ -120,6 +124,7 @@ entry("uptime");
 entry("trace");
 // <--- Here!
 ```
+```
 
 
    运行后会生成汇编文件
@@ -127,7 +132,9 @@ entry("trace");
 
 
 ```
+```
   .global trace trace:  li a7, SYS_trace  ecall  ret
+```
 ```
 
 4. 在 `kernel/syscall.h` 中添加 trace 系统调用的号码。
@@ -135,20 +142,47 @@ entry("trace");
 
 
 ```
- // System call numbers #define SYS_fork    1 #define SYS_exit    2 #define SYS_wait    3 #define SYS_pipe    4 #define SYS_read    5 #define SYS_kill    6 #define SYS_exec    7 #define SYS_fstat   8 #define SYS_chdir   9 #define SYS_dup    10 #define SYS_getpid 11 #define SYS_sbrk   12 #define SYS_sleep  13 #define SYS_uptime 14 #define SYS_open   15 #define SYS_write  16 #define SYS_mknod  17 #define SYS_unlink 18 #define SYS_link   19 #define SYS_mkdir  20 #define SYS_close  21 #define SYS_trace  22 // <--- Here
+```
+ // System call numbers
+#define SYS_fork    1
+#define SYS_exit    2
+#define SYS_wait    3
+#define SYS_pipe    4
+#define SYS_read    5
+#define SYS_kill    6
+#define SYS_exec    7
+#define SYS_fstat   8
+#define SYS_chdir   9
+#define SYS_dup    10
+#define SYS_getpid 11
+#define SYS_sbrk   12
+#define SYS_sleep  13
+#define SYS_uptime 14
+#define SYS_open   15
+#define SYS_write  16
+#define SYS_mknod  17
+#define SYS_unlink 18
+#define SYS_link   19
+#define SYS_mkdir  20
+#define SYS_close  21
+#define SYS_trace  22 // <--- Here
+```
 ```
 
 5. 在 `kernel/syscall.c` 中添加一个数组，用于将系统调用号码映射到名称。例如：
 
 
 ```
+```
  static char* syscalls_name[] = {
   [SYS_fork]    "syscall fork", [SYS_exit]    "syscall exit", [SYS_wait]    "syscall wait", [SYS_pipe]    "syscall pipe", [SYS_read]    "syscall read", [SYS_kill]    "syscall kill", [SYS_exec]    "syscall exec", [SYS_fstat]   "syscall fstat", [SYS_chdir]   "syscall chdir", [SYS_dup]     "syscall dup", [SYS_getpid]  "syscall getpid", [SYS_sbrk]    "syscall sbrk", [SYS_sleep]   "syscall sleep", [SYS_uptime]  "syscall uptime", [SYS_open]    "syscall open", [SYS_write]   "syscall write", [SYS_mknod]   "syscall mknod", [SYS_unlink]  "syscall unlink", [SYS_link]    "syscall link", [SYS_mkdir]   "syscall mkdir", [SYS_close]   "syscall close", [SYS_trace]   "syscall trace", };
+```
 ```
 
 6. 用 extern 全局声明新的内核调用函数，并且在 syscalls 映射表中，加入从前面定义的编号到系统调用函数指针的映射
 
 
+```
 ```
   // Prototypes for the functions that handle system calls. extern uint64 sys_fork(void);
 extern uint64 sys_exit(void);
@@ -175,28 +209,34 @@ extern uint64 sys_trace(void);
 // <--- Here  // An array mapping syscall numbers from syscall.h // to the function that handles the system call. static uint64 (*syscalls[])(void) = {
   [SYS_fork]    sys_fork, [SYS_exit]    sys_exit, [SYS_wait]    sys_wait, [SYS_pipe]    sys_pipe, [SYS_read]    sys_read, [SYS_kill]    sys_kill, [SYS_exec]    sys_exec, [SYS_fstat]   sys_fstat, [SYS_chdir]   sys_chdir, [SYS_dup]     sys_dup, [SYS_getpid]  sys_getpid, [SYS_sbrk]    sys_sbrk, [SYS_sleep]   sys_sleep, [SYS_uptime]  sys_uptime, [SYS_open]    sys_open, [SYS_write]   sys_write, [SYS_mknod]   sys_mknod, [SYS_unlink]  sys_unlink, [SYS_link]    sys_link, [SYS_mkdir]   sys_mkdir, [SYS_close]   sys_close, [SYS_trace]   sys_trace, // <--- Here };
 ```
+```
 
 7. 在 `kernel/proc.h` 中給`proc` 结构体添加 `mask` 字段
 
 
 
 ```c
+```
  uint64 mask;
+```
 ```
 
 8. 在 `kernel/sysproc.c` 中添加 `sys_trace()` 函数，该函数用于实现新的 trace 系统调用。在该函数中，将传递给 trace 系统调用的参数保存到进程的 proc 结构中。
 
 
 ```c
+```
  uint64 sys_trace(void) {
   int mask;   argint(0, &mask);
 struct proc *p = myproc();
 p->mask = mask;   return 0; }
 ```
+```
 
 9. 修改 `kernel/proc.c` 中的 `fork()` 函数，以便将父进程的跟踪掩码复制到子进程中。
 
 
+```
 ```
  // Create a new process, copying the parent. // Sets up child kernel stack to return as if from fork() system call. int fork(void) {
   int i, pid;
@@ -217,11 +257,13 @@ acquire(&np->lock);
 np->state = RUNNABLE;   release(&np->lock);
 return pid; }
 ```
+```
 
 10. 修改 `kernel/syscall.c` 中的 `syscall()` 函数，以在需要时输出跟踪信息。
 
 
 ```c
+```
   void syscall(void) {
   int num;
 struct proc *p = myproc();
@@ -232,6 +274,7 @@ if ((p->mask >> num) &0b1) {
 }   } else {
   printf("%d %s: unknown sys call %d\n",             p->pid, p->name, num);
 p->trapframe->a0 = -1;   } }
+```
 ```
 
 11. 实现 `user/trace.c` 程序。该程序应该在新的进程中调用 trace 系统调用，然后运行另一个程序，以便跟踪指定的系统调用。在实现 `user/trace.c` 时，您需要使用 `fork()` 和 `exec()` 系统调用来运行其他程序。
@@ -248,14 +291,17 @@ p->trapframe->a0 = -1;   } }
 
 
 ```c
+```
  struct sysinfo {
   uint64 freemem;   // amount of free memory (bytes)
 uint64 nproc;     // number of process };
+```
 ```
 
 2. `usys.pl`
 
 
+```
 ```
  entry("fork");
 entry("exit");
@@ -282,10 +328,12 @@ entry("trace");
 entry("sysinfo");
 
 ```
+```
 
 3. `user.h`
 
 
+```
 ```
  // system calls int fork(void);
 int exit(int) __attribute__((noreturn));
@@ -313,29 +361,58 @@ struct sysinfo;
 int sysinfo(struct sysinfo *);
 
 ```
+```
 
 4. 在 `kernel/syscall.h` 中添加一个名为 `sysinfo()` 的原型和一个新的系统调用号。
 
 
 
 ```
- // System call numbers #define SYS_fork    1 #define SYS_exit    2 #define SYS_wait    3 #define SYS_pipe    4 #define SYS_read    5 #define SYS_kill    6 #define SYS_exec    7 #define SYS_fstat   8 #define SYS_chdir   9 #define SYS_dup    10 #define SYS_getpid 11 #define SYS_sbrk   12 #define SYS_sleep  13 #define SYS_uptime 14 #define SYS_open   15 #define SYS_write  16 #define SYS_mknod  17 #define SYS_unlink 18 #define SYS_link   19 #define SYS_mkdir  20 #define SYS_close  21 #define SYS_trace  22 #define SYS_sysinfo  23
+```
+ // System call numbers
+#define SYS_fork    1
+#define SYS_exit    2
+#define SYS_wait    3
+#define SYS_pipe    4
+#define SYS_read    5
+#define SYS_kill    6
+#define SYS_exec    7
+#define SYS_fstat   8
+#define SYS_chdir   9
+#define SYS_dup    10
+#define SYS_getpid 11
+#define SYS_sbrk   12
+#define SYS_sleep  13
+#define SYS_uptime 14
+#define SYS_open   15
+#define SYS_write  16
+#define SYS_mknod  17
+#define SYS_unlink 18
+#define SYS_link   19
+#define SYS_mkdir  20
+#define SYS_close  21
+#define SYS_trace  22
+#define SYS_sysinfo  23
+```
 ```
 
 5. 在 `kernel/sysproc.c` 中实现 `sys_sysinfo()` 函数。
 
 
 ```c
+```
   uint64 sys_sysinfo(void) {
   // user pointer to struct sysinfo   uint64 si_addr;    argaddr(0, &si_addr);
 struct sysinfo sysinfo;   sysinfo.freemem = free_mem_num();
 sysinfo.nproc = num_of_processes();
 if (copyout(myproc()->pagetable, si_addr, (char *)&sysinfo, sizeof(sysinfo)) < 0)     return -1;    return 0; }
 ```
+```
 
 6. 添加一个名为 `free_mem_num()` 的函数到 `kernel/kalloc.c`, 返回系统中空闲内存的字节数。
 
 
+```
 ```
  // 统计未使用内存 // 一页等于 4096 bytes uint64 free_mem_num(void) {
   struct run *r;
@@ -344,19 +421,14 @@ r = kmem.freelist;   while (r) {
   free_num++;     r = r->next;   }   release(&kmem.lock);
 return free_num * PGSIZE; }
 ```
+```
 
 7. 添加一个名为 `num_of_processes()` 的函数到 `kernel/proc.c`, 返回状态不是 UNUSED 的进程数量。
 
 
 ```
+```
  // used by sysinfo int num_of_processes(void) {
   int nproc = 0;   for (struct proc *p = proc; p < &proc[NPROC]; p++) {
   if (p->state != UNUSED)       nproc++;   }   return nproc; }
 ```
-
-8. 在 `sysinfo()` 函数中，分别调用 `free_mem_num()` 和 `num_of_processes()` 函数来填充结构体 sysinfo 中的 freemem 和 nproc 字段。
-9. 使用 `copyout()` 函数将结构体 sysinfo 复制回用户空间。
-
-### Answer
-
-- 代码改动见 [commit](https://github.com/Misaka-9982-coder/6.S081-fa22/commit/79a0f715798707c9a23f131d2fad2006b2c3a848)

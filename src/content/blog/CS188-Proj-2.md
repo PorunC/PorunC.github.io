@@ -278,13 +278,21 @@ python autograder.py -q q2 --no-graphics
 
   |  |  |
   | --- | --- |
-  | ``` 1 ``` | ``` minimaxClassic ``` |
+
+```
+ minimaxClassic
+```
+
 
   layout are 9, 8, 7, -492 for depths 1, 2, 3 and 4 respectively. Note that your minimax agent will often win (665/1000 games for us) despite the dire prediction of depth 4 minimax.
 
   |  |  |
   | --- | --- |
-  | ``` 1 ``` | ``` python pacman.py -p MinimaxAgent -l minimaxClassic -a depth=4 ``` |
+
+```
+ python pacman.py -p MinimaxAgent -l minimaxClassic -a depth=4
+```
+
 - Pacman is always agent 0, and the agents move in order of increasing agent index.
 - All states in minimax should be `GameStates`, either passed in to `getAction` or generated via `GameState.generateSuccessor`. In this project, you will not be abstracting to simplified states.
 - On larger boards such as `openClassic` and `mediumClassic` (the default), you’ll find Pacman to be good at not dying, but quite bad at winning. He’ll often thrash around without making progress. He might even thrash around right next to a dot without eating it because he doesn’t know where he’d go after eating that dot. Don’t worry if you see this behavior, question 5 will clean up all of these issues.
@@ -292,7 +300,11 @@ python autograder.py -q q2 --no-graphics
 
   |  |  |
   | --- | --- |
-  | ``` 1 ``` | ``` python pacman.py -p MinimaxAgent -l trappedClassic -a depth=3 ``` |
+
+```
+ python pacman.py -p MinimaxAgent -l trappedClassic -a depth=3
+```
+
 
   Make sure you understand why Pacman rushes the closest ghost in this case.
 

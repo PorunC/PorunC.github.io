@@ -309,7 +309,10 @@ class VendingMachine:
 > |  |  |
 > | --- | --- |
 > ```python
- >>> feeling = 'love' >>> course = '61A!' >>> f'I {feeling} {course}' 'I love 61A!'
+ >>> feeling = 'love'
+ >>> course = '61A!'
+ >>> f'I {feeling} {course}'
+ 'I love 61A!'
 > ```
 
 
@@ -324,7 +327,9 @@ python3 ok -q VendingMachine✂️
 > |  |  |
 > | --- | --- |
 > ```python
- >>> ten, twenty, thirty = 10, 'twenty', [30] >>> '{0} plus {1} is {2}'.format(ten, twenty, thirty) '10 plus twenty is [30]'
+ >>> ten, twenty, thirty = 10, 'twenty', [30]
+ >>> '{0} plus {1} is {2}'.format(ten, twenty, thirty)
+ '10 plus twenty is [30]'
 > ```
 
 

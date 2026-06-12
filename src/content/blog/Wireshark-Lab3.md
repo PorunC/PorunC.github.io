@@ -59,7 +59,9 @@ excerpt: >-
 
 
 ```
- Non-authoritative answer: www.baidu.com	canonical name = www.a.shifen.com. Name:	www.a.shifen.com Address: 182.61.200.6 Name:	www.a.shifen.com Address: 182.61.200.7
+ Non-authoritative answer: www.baidu.com	canonical name = www.a.shifen.com.
+ Name:	www.a.shifen.com Address: 182.61.200.6
+ Name:	www.a.shifen.com Address: 182.61.200.7
 ```
 ```
 
@@ -71,7 +73,12 @@ excerpt: >-
 ```
  nslookup -type=NS cam.ac.uk
 Server:		 Address:
-Non-authoritative answer: cam.ac.uk	nameserver = auth0.dns.cam.ac.uk. cam.ac.uk	nameserver = ns1.mythic-beasts.com. cam.ac.uk	nameserver = dns0.eng.cam.ac.uk. cam.ac.uk	nameserver = ns3.mythic-beasts.com. cam.ac.uk	nameserver = dns0.cl.cam.ac.uk. cam.ac.uk	nameserver = ns2.ic.ac.uk.
+Non-authoritative answer: cam.ac.uk	nameserver = auth0.dns.cam.ac.uk.
+ cam.ac.uk	nameserver = ns1.mythic-beasts.com.
+ cam.ac.uk	nameserver = dns0.eng.cam.ac.uk.
+ cam.ac.uk	nameserver = ns3.mythic-beasts.com.
+ cam.ac.uk	nameserver = dns0.cl.cam.ac.uk.
+ cam.ac.uk	nameserver = ns2.ic.ac.uk.
 Authoritative answers can be found from:
 ```
 ```
@@ -86,7 +93,9 @@ Authoritative answers can be found from:
 ```
  $ nslookup mail.yahoo.com
 Server:		 Address:
-Non-authoritative answer: mail.yahoo.com	canonical name = edge.gycpi.b.yahoodns.net. Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.7 Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.8
+Non-authoritative answer: mail.yahoo.com	canonical name = edge.gycpi.b.yahoodns.net.
+ Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.7
+ Name:	edge.gycpi.b.yahoodns.net Address: 69.147.88.8
 ```
 ```
 
@@ -98,7 +107,9 @@ Non-authoritative answer: mail.yahoo.com	canonical name = edge.gycpi.b.yahoodns.
 ```bash
 ```
  nslookup mail.yahoo.com dns0.eng.cam.ac.uk
-Server:		dns0.eng.cam.ac.uk Address:	129.169.8.8#53  ** server can't find mail.yahoo.com: REFUSED
+Server:		dns0.eng.cam.ac.uk
+Address:	129.169.8.8#53
+** server can't find mail.yahoo.com: REFUSED
 ```
 ```
 

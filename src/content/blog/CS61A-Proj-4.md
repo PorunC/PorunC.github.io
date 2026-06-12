@@ -954,8 +954,15 @@ python3 ok -q optional_1
 >
 > |  |  |
 > | --- | --- |
-> ```
- ;; The let-to-lambda procedure (define (let-to-lambda expr)  ...)  ;; A list representing the let-to-lambda procedure (define let-to-lambda-code   '(define (let-to-lambda expr)      ...))  ;; A let-to-lambda procedure that does not use 'let'! (define let-to-lambda-without-let   (let-to-lambda let-to-lambda-code))
+> ```scheme
+ ;; The let-to-lambda procedure
+ (define (let-to-lambda expr) ...)
+ ;; A list representing the let-to-lambda procedure
+ (define let-to-lambda-code
+   '(define (let-to-lambda expr) ...))
+ ;; A let-to-lambda procedure that does not use 'let'!
+ (define let-to-lambda-without-let
+   (let-to-lambda let-to-lambda-code))
 > ```
 
 

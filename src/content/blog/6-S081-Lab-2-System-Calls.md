@@ -175,7 +175,28 @@ entry("trace");
 ```
 ```
  static char* syscalls_name[] = {
-  [SYS_fork]    "syscall fork", [SYS_exit]    "syscall exit", [SYS_wait]    "syscall wait", [SYS_pipe]    "syscall pipe", [SYS_read]    "syscall read", [SYS_kill]    "syscall kill", [SYS_exec]    "syscall exec", [SYS_fstat]   "syscall fstat", [SYS_chdir]   "syscall chdir", [SYS_dup]     "syscall dup", [SYS_getpid]  "syscall getpid", [SYS_sbrk]    "syscall sbrk", [SYS_sleep]   "syscall sleep", [SYS_uptime]  "syscall uptime", [SYS_open]    "syscall open", [SYS_write]   "syscall write", [SYS_mknod]   "syscall mknod", [SYS_unlink]  "syscall unlink", [SYS_link]    "syscall link", [SYS_mkdir]   "syscall mkdir", [SYS_close]   "syscall close", [SYS_trace]   "syscall trace", };
+  [SYS_fork]    "syscall fork",
+  [SYS_exit]    "syscall exit",
+  [SYS_wait]    "syscall wait",
+  [SYS_pipe]    "syscall pipe",
+  [SYS_read]    "syscall read",
+  [SYS_kill]    "syscall kill",
+  [SYS_exec]    "syscall exec",
+  [SYS_fstat]   "syscall fstat",
+  [SYS_chdir]   "syscall chdir",
+  [SYS_dup]     "syscall dup",
+  [SYS_getpid]  "syscall getpid",
+  [SYS_sbrk]    "syscall sbrk",
+  [SYS_sleep]   "syscall sleep",
+  [SYS_uptime]  "syscall uptime",
+  [SYS_open]    "syscall open",
+  [SYS_write]   "syscall write",
+  [SYS_mknod]   "syscall mknod",
+  [SYS_unlink]  "syscall unlink",
+  [SYS_link]    "syscall link",
+  [SYS_mkdir]   "syscall mkdir",
+  [SYS_close]   "syscall close",
+  [SYS_trace]   "syscall trace",
 ```
 ```
 
@@ -206,8 +227,31 @@ extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
 extern uint64 sys_trace(void);
-// <--- Here  // An array mapping syscall numbers from syscall.h // to the function that handles the system call. static uint64 (*syscalls[])(void) = {
-  [SYS_fork]    sys_fork, [SYS_exit]    sys_exit, [SYS_wait]    sys_wait, [SYS_pipe]    sys_pipe, [SYS_read]    sys_read, [SYS_kill]    sys_kill, [SYS_exec]    sys_exec, [SYS_fstat]   sys_fstat, [SYS_chdir]   sys_chdir, [SYS_dup]     sys_dup, [SYS_getpid]  sys_getpid, [SYS_sbrk]    sys_sbrk, [SYS_sleep]   sys_sleep, [SYS_uptime]  sys_uptime, [SYS_open]    sys_open, [SYS_write]   sys_write, [SYS_mknod]   sys_mknod, [SYS_unlink]  sys_unlink, [SYS_link]    sys_link, [SYS_mkdir]   sys_mkdir, [SYS_close]   sys_close, [SYS_trace]   sys_trace, // <--- Here };
+// <--- Here
+// An array mapping syscall numbers from syscall.h to the function that handles the system call.
+static uint64 (*syscalls[])(void) = {
+  [SYS_fork]    sys_fork,
+  [SYS_exit]    sys_exit,
+  [SYS_wait]    sys_wait,
+  [SYS_pipe]    sys_pipe,
+  [SYS_read]    sys_read,
+  [SYS_kill]    sys_kill,
+  [SYS_exec]    sys_exec,
+  [SYS_fstat]   sys_fstat,
+  [SYS_chdir]   sys_chdir,
+  [SYS_dup]     sys_dup,
+  [SYS_getpid]  sys_getpid,
+  [SYS_sbrk]    sys_sbrk,
+  [SYS_sleep]   sys_sleep,
+  [SYS_uptime]  sys_uptime,
+  [SYS_open]    sys_open,
+  [SYS_write]   sys_write,
+  [SYS_mknod]   sys_mknod,
+  [SYS_unlink]  sys_unlink,
+  [SYS_link]    sys_link,
+  [SYS_mkdir]   sys_mkdir,
+  [SYS_close]   sys_close,
+  [SYS_trace]   sys_trace, // <--- Here };
 ```
 ```
 
@@ -227,35 +271,66 @@ extern uint64 sys_trace(void);
 ```c
 ```
  uint64 sys_trace(void) {
-  int mask;   argint(0, &mask);
-struct proc *p = myproc();
-p->mask = mask;   return 0; }
+  int mask;
+  argint(0, &mask);
+  struct proc *p = myproc();
+  p->mask = mask;
+  return 0;
+ }
 ```
 ```
 
 9. 修改 `kernel/proc.c` 中的 `fork()` 函数，以便将父进程的跟踪掩码复制到子进程中。
 
 
+```c
 ```
-```
- // Create a new process, copying the parent. // Sets up child kernel stack to return as if from fork() system call. int fork(void) {
+// Create a new process, copying the parent.
+// Sets up child kernel stack to return as if from fork() system call.
+int fork(void) {
   int i, pid;
-struct proc *np;
-struct proc *p = myproc();
-// Allocate process.   if((np = allocproc()) == 0) {
-  return -1;   }    // Copy user memory from parent to child.   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0) {
-  freeproc(np);
-release(&np->lock);
-return -1;   }   np->sz = p->sz;    np->mask = p->mask;    // copy saved user registers.   *(np->trapframe) = *(p->trapframe);
-// Cause fork to return 0 in the child.   np->trapframe->a0 = 0;    // increment reference counts on open file descriptors.   for(i = 0; i < NOFILE; i++)     if(p->ofile[i])       np->ofile[i] = filedup(p->ofile[i]);
-np->cwd = idup(p->cwd);
-safestrcpy(np->name, p->name, sizeof(p->name));
-pid = np->pid;    release(&np->lock);
-acquire(&wait_lock);
-np->parent = p;   release(&wait_lock);
-acquire(&np->lock);
-np->state = RUNNABLE;   release(&np->lock);
-return pid; }
+  struct proc *np;
+  struct proc *p = myproc();
+
+  // Allocate process.
+  if ((np = allocproc()) == 0) {
+    return -1;
+  }
+
+  // Copy user memory from parent to child.
+  if (uvmcopy(p->pagetable, np->pagetable, p->sz) < 0) {
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
+  np->sz = p->sz;
+
+  np->mask = p->mask;
+
+  // copy saved user registers.
+  *(np->trapframe) = *(p->trapframe);
+
+  // Cause fork to return 0 in the child.
+  np->trapframe->a0 = 0;
+
+  // increment reference counts on open file descriptors.
+  for (i = 0; i < NOFILE; i++)
+    if (p->ofile[i])
+      np->ofile[i] = filedup(p->ofile[i]);
+  np->cwd = idup(p->cwd);
+  safestrcpy(np->name, p->name, sizeof(p->name));
+
+  pid = np->pid;
+
+  release(&np->lock);
+  acquire(&wait_lock);
+  np->parent = p;
+  release(&wait_lock);
+  acquire(&np->lock);
+  np->state = RUNNABLE;
+  release(&np->lock);
+  return pid;
+}
 ```
 ```
 
@@ -264,16 +339,24 @@ return pid; }
 
 ```c
 ```
-  void syscall(void) {
+void syscall(void) {
   int num;
-struct proc *p = myproc();
-num = p->trapframe->a7;   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-  // Use num to lookup the system call function for num, call it,     // and store its return value in p->trapframe->a0     p->trapframe->a0 = syscalls[num]();
-if ((p->mask >> num) &0b1) {
-  printf("%d: %s -> %d\n",              p->pid, syscalls_name[num], p->trapframe->a0);
-}   } else {
-  printf("%d %s: unknown sys call %d\n",             p->pid, p->name, num);
-p->trapframe->a0 = -1;   } }
+  struct proc *p = myproc();
+  num = p->trapframe->a7;
+  if (num > 0 && num < NELEM(syscalls) && syscalls[num]) {
+    // Use num to lookup the system call function for num, call it,
+    // and store its return value in p->trapframe->a0
+    p->trapframe->a0 = syscalls[num]();
+    if ((p->mask >> num) & 0b1) {
+      printf("%d: %s -> %d\n",
+              p->pid, syscalls_name[num], p->trapframe->a0);
+    }
+  } else {
+    printf("%d %s: unknown sys call %d\n",
+            p->pid, p->name, num);
+    p->trapframe->a0 = -1;
+  }
+}
 ```
 ```
 
@@ -292,9 +375,10 @@ p->trapframe->a0 = -1;   } }
 
 ```c
 ```
- struct sysinfo {
+struct sysinfo {
   uint64 freemem;   // amount of free memory (bytes)
-uint64 nproc;     // number of process };
+  uint64 nproc;     // number of process
+};
 ```
 ```
 
@@ -401,34 +485,57 @@ int sysinfo(struct sysinfo *);
 
 ```c
 ```
-  uint64 sys_sysinfo(void) {
-  // user pointer to struct sysinfo   uint64 si_addr;    argaddr(0, &si_addr);
-struct sysinfo sysinfo;   sysinfo.freemem = free_mem_num();
-sysinfo.nproc = num_of_processes();
-if (copyout(myproc()->pagetable, si_addr, (char *)&sysinfo, sizeof(sysinfo)) < 0)     return -1;    return 0; }
+uint64 sys_sysinfo(void) {
+  // user pointer to struct sysinfo
+  uint64 si_addr;
+
+  argaddr(0, &si_addr);
+  struct sysinfo sysinfo;
+  sysinfo.freemem = free_mem_num();
+  sysinfo.nproc = num_of_processes();
+  if (copyout(myproc()->pagetable, si_addr, (char *)&sysinfo, sizeof(sysinfo)) < 0)
+    return -1;
+
+  return 0;
+}
 ```
 ```
 
 6. 添加一个名为 `free_mem_num()` 的函数到 `kernel/kalloc.c`, 返回系统中空闲内存的字节数。
 
 
+```c
 ```
-```
- // 统计未使用内存 // 一页等于 4096 bytes uint64 free_mem_num(void) {
+// 统计未使用内存
+// 一页等于 4096 bytes
+uint64 free_mem_num(void) {
   struct run *r;
-uint64 free_num = 0;   acquire(&kmem.lock);
-r = kmem.freelist;   while (r) {
-  free_num++;     r = r->next;   }   release(&kmem.lock);
-return free_num * PGSIZE; }
+  uint64 free_num = 0;
+
+  acquire(&kmem.lock);
+  r = kmem.freelist;
+  while (r) {
+    free_num++;
+    r = r->next;
+  }
+  release(&kmem.lock);
+  return free_num * PGSIZE;
+}
 ```
 ```
 
 7. 添加一个名为 `num_of_processes()` 的函数到 `kernel/proc.c`, 返回状态不是 UNUSED 的进程数量。
 
 
+```c
 ```
-```
- // used by sysinfo int num_of_processes(void) {
-  int nproc = 0;   for (struct proc *p = proc; p < &proc[NPROC]; p++) {
-  if (p->state != UNUSED)       nproc++;   }   return nproc; }
+// used by sysinfo
+int num_of_processes(void) {
+  int nproc = 0;
+  for (struct proc *p = proc; p < &proc[NPROC]; p++) {
+    if (p->state != UNUSED)
+      nproc++;
+  }
+  return nproc;
+}
 ```

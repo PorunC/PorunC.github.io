@@ -118,7 +118,12 @@ python3 ok -q kwlist_construct✂️
 > |  |  |
 > | --- | --- |
 > ```scheme
- scm> (define make-kwlist make-kwlist1) scm> (define get-keys-kwlist get-keys-kwlist1) scm> (define get-values-kwlist get-values-kwlist1) ; tests here... scm> (define make-kwlist make-kwlist2) scm> (define get-keys-kwlist get-keys-kwlist2) scm> (define get-values-kwlist get-values-kwlist2) ; tests here...
+ scm> (define make-kwlist make-kwlist1)
+ scm> (define get-keys-kwlist get-keys-kwlist1)
+ scm> (define get-values-kwlist get-values-kwlist1) ; tests here...
+ scm> (define make-kwlist make-kwlist2)
+ scm> (define get-keys-kwlist get-keys-kwlist2)
+ scm> (define get-values-kwlist get-values-kwlist2) ; tests here...
 > ```
 
 >

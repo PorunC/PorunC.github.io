@@ -239,8 +239,7 @@ Implement the `define` and `lookup` methods of the `Frame` class, in `scheme_cla
 2. ```
    lookup
 
-   |  |  |
-   | --- | --- |
+
 ```
      takes a symbol and returns the value bound to that symbol in the first frame of the environment in which the symbol is bound. The     environment     for a     ```plaintext Frame
 ```

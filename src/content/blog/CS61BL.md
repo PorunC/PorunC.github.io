@@ -126,8 +126,7 @@ _board.setViewingPerspective(Side.NORTH);
 
 3. Move all the tiles to make them adjacent
 
-   |  |  |
-   | --- | --- |
+
 ```
  for (int row = size - 1; row >= 0; row -- ) {
   Tile t = _board.tile(col, row);
@@ -141,8 +140,7 @@ changed = true;     }   }
 
 4. merge the tiles if they have the same value between one and the one next to it
 
-   |  |  |
-   | --- | --- |
+
 ```
  for (int row = 3; row >= 0; row -- ) {
   Tile curTile = _board.tile(col, row);

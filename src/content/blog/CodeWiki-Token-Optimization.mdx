@@ -1,0 +1,384 @@
+---
+title: "CodeWiki 是怎么一步步把 Token 消耗降下来的"
+date: '2026-01-15T12:00:00.000Z'
+tags:
+  - CodeWiki
+  - GraphRAG
+  - Token Optimization
+  - LLM
+categories:
+  - LLM
+  - Engineering
+slug: 2026/01/15/codewiki-token-optimization
+excerpt: 记录 CodeWiki 从粗放上下文到 GraphRAG 检索、预算控制、噪声过滤、本地缓存、Provider prefix cache 和 compact evidence 的 token 优化过程。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+做代码理解工具，最容易踩的坑是什么？
+
+不是模型不够强，也不是 prompt 写得不够漂亮，而是你很容易一上来就把太多东西塞给模型。
+
+一个仓库里有源码、测试、配置、构建产物、依赖锁文件、README、图谱节点、调用边、wiki 页面、翻译结果。你越想让模型“懂整个项目”，就越容易把这些东西一股脑丢进上下文里。
+
+问题是，这样很快就会变成三个结果：
+
+- 慢，因为每次请求都很大。
+- 贵，因为输入 token 和输出 token 都在涨。
+- 不一定准，因为模型会被测试文件、lockfile、生成代码这些噪声干扰。
+
+CodeWiki 后来的优化路线，本质上就是从“模型硬读一大坨东西”，慢慢变成“本地先把东西筛好、压好、排好，模型只看最有价值的证据”。
+
+这篇文章就按这个思路，把整个 token 优化过程讲一遍。
+
+---
+
+## 一、先别让模型看整个仓库
+
+一开始最重要的转折点，是引入 GraphRAG。
+
+这个变化可以理解成一句话：不要把仓库直接交给模型，而是先在本地把相关证据找出来。
+
+以前比较粗暴的做法是，用户问一个问题，系统就尽量多塞代码、多塞图谱、多塞上下文。看起来信息很全，但实际上模型真正需要的往往只是一小部分。
+
+比如用户问：
+
+> 这个接口请求进来之后是怎么处理的？
+
+模型通常不需要看完整仓库。它更需要看这些东西：
+
+- 入口 route 或 handler 在哪里。
+- handler 调用了哪个 service。
+- service 又依赖哪些 model、schema、config。
+- 这些代码之间的调用关系是什么。
+- 关键源码片段分别在哪些文件、哪些行。
+
+GraphRAG 做的就是这件事。它先把代码拆成 source chunks，再结合符号搜索、全文检索、可选向量检索和代码图谱扩展，找到和当前问题最相关的那一小包证据。
+
+<Mermaid diagram={`
+flowchart LR
+    A["用户问题或 Wiki 页面主题"] --> B["本地检索"]
+    B --> C["找到相关符号和源码块"]
+    C --> D["沿代码图谱扩展上下游"]
+    D --> E["按相关性排序"]
+    E --> F["打包成小上下文"]
+    F --> G["交给模型回答或写 Wiki"]
+`} />
+
+这一步非常关键。
+
+因为从这里开始，CodeWiki 的架构重心变了。模型不再是第一步处理器，本地索引才是第一步处理器。模型负责最后的总结、解释和写作，而不是负责在整个仓库里大海捞针。
+
+这就是 token 优化的第一层：先把“全仓输入”变成“检索输入”。
+
+---
+
+## 二、检索到了也不能全塞，要有预算
+
+引入 GraphRAG 之后，问题并没有完全结束。
+
+因为检索结果本身也可能很多。一个复杂功能可能牵涉几十个函数、十几个文件、很多调用边。如果检索到什么就发什么，那只是把“整仓塞 prompt”换成了“检索结果塞 prompt”。
+
+所以接下来要做的是预算控制。
+
+CodeWiki 会给上下文设置大概的 token budget，也会限制最多放多少个 source chunks。候选 chunk 会先按相关性排序，然后一个个尝试放进 context pack。放得下就放，放不下就跳过。
+
+<Mermaid diagram={`
+flowchart TD
+    A["候选源码块"] --> B["按相关性排序"]
+    B --> C{"加入后会不会超预算?"}
+    C -- "不会" --> D["加入 context pack"]
+    C -- "会" --> E["跳过这个 chunk"]
+    D --> F{"预算是否用完?"}
+    F -- "没有" --> C
+    F -- "用完" --> G["生成最终证据包"]
+    E --> F
+`} />
+
+这个思路很朴素，但非常管用。
+
+上下文不是越多越好，而是越准越好。尤其是代码理解场景，模型看到一堆不相关源码，反而会更容易跑偏。
+
+后面 CodeWiki 又把这些预算变成配置项。这样不同模型、不同仓库、不同成本预算，都可以调整 GraphRAG 的最大上下文 token 数和最大 source chunk 数。
+
+这一步的价值是：系统终于知道什么时候该停。
+
+---
+
+## 三、先把低价值内容挡在门外
+
+做了一段时间之后，很容易发现另一个问题：有些内容特别吃 token，但对理解项目没有多少帮助。
+
+典型例子就是这些：
+
+- `package-lock.json`
+- `pnpm-lock.yaml`
+- `yarn.lock`
+- `uv.lock`
+- `node_modules`
+- `dist`
+- `build`
+- 生成代码
+- 测试文件
+- vendor 代码
+
+这些文件不是完全没用，但它们通常不应该出现在 wiki 主体解释里。尤其是 lockfile，非常大，而且内容密度对 LLM 来说很低。如果一个 context pack 里混进几千 token 的 lockfile，模型不是更懂项目了，只是被浪费了注意力。
+
+所以 CodeWiki 开始在更早的阶段过滤这些东西。
+
+不是等它们进了 prompt，再指望模型自己判断“这段可以忽略”。而是在构建 chunk、检索 seed、选择 source evidence 的时候，就把这类文件排除掉。
+
+<Mermaid diagram={`
+flowchart LR
+    A["仓库文件"] --> B{"文件角色判断"}
+    B -- "业务源码" --> C["构建 source chunk"]
+    B -- "测试文件" --> D["过滤"]
+    B -- "构建产物" --> D
+    B -- "依赖目录" --> D
+    B -- "lockfile" --> D
+    C --> E["进入 GraphRAG 检索池"]
+`} />
+
+这一步的收益不只是“少了 token”。
+
+更准确地说，是同样的 token 预算里，模型看到的有效信息变多了。以前 8000 token 里可能混着很多噪声；过滤之后，8000 token 可以更多地留给核心业务代码、关键调用关系和真正影响答案的证据。
+
+这叫提高 token 密度。
+
+---
+
+## 四、同一段内容别发两遍
+
+还有一种浪费更隐蔽：重复。
+
+早期 page prompt 里可能同时带着两份东西：
+
+- `context_pack.text`
+- `source_chunks.content`
+
+它们都可能包含源码正文。这样一来，同一段代码就有机会在 prompt 里出现两次。
+
+这不是模型理解需要的重复，而是 payload 设计上的重复。
+
+后面 CodeWiki 把这块改掉了：源码正文主要放在 context pack 里，source chunks 只保留 metadata，比如文件路径、起止行号、hash、分数、引用 id。
+
+可以把它理解成写材料：
+
+- 正文只放一份。
+- 目录、索引、页码可以保留。
+- 不要把同一章内容复制两遍。
+
+这个优化很普通，但很实际。很多 token 消耗不是因为信息真的多，而是因为同一份信息在不同字段里被重复携带了。
+
+---
+
+## 五、能不调模型，就不调模型
+
+再往后，CodeWiki 开始做本地 LLM 缓存。
+
+这个思路也很直接：如果同一个仓库、同一个任务、同一个输入，之前已经成功生成过结果，那就不要再调用模型了，直接从数据库里拿。
+
+<Mermaid diagram={`
+flowchart TD
+    A["准备一次 LLM 请求"] --> B["计算 input payload hash"]
+    B --> C{"本地是否有成功缓存?"}
+    C -- "有" --> D["读取历史 response"]
+    D --> E["记录 cached=true 审计行"]
+    E --> F["不消耗 provider token"]
+    C -- "没有" --> G["调用模型"]
+    G --> H["记录 response 和 usage"]
+    H --> I["下次可以复用"]
+`} />
+
+这和服务商的 prompt cache 不一样。
+
+本地缓存命中时，模型根本不会被调用。所以 provider 侧的输入 token、输出 token、延迟、费用，全都省掉。
+
+这类缓存特别适合这些场景：
+
+- 同一个 wiki 页面重复生成。
+- 同一个问题重复问。
+- validation retry 后结果已经稳定。
+- 增量更新时很多页面输入没有变化。
+
+embedding 这边也做了类似的事情。
+
+同样内容的 chunk，不需要重复 embed。CodeWiki 按 `content_hash` 去重，相同内容只算一次向量。后面又做了增量同步，代码没变就不重新 embed，只给新增或变更的 chunk 补向量。
+
+这就是很典型的工程优化：别让模型反复处理一样的输入。
+
+---
+
+## 六、别让 Wiki 页面数量失控
+
+除了单次请求，另一个 token 大头是“请求次数”。
+
+Wiki 生成就是典型例子。一个仓库如果生成 50 个页面，每个页面都调一次模型，那 token 消耗会被页面数量成倍放大。
+
+所以 CodeWiki 后来开始控制 catalog 的规模。
+
+小仓库就少生成页面，结构浅一点。大仓库才允许更多页面、更深层级。这样 wiki 的规模和仓库复杂度匹配，而不是所有项目都套一套固定的大纲。
+
+<Mermaid diagram={`
+flowchart TD
+    A["分析仓库规模"] --> B["统计文件数、节点数、边数、chunk 数"]
+    B --> C{"仓库规模"}
+    C -- "小" --> D["少量页面，浅层结构"]
+    C -- "中" --> E["适中页面，适中层级"]
+    C -- "大" --> F["更多页面，更细分模块"]
+    D --> G["生成 Wiki Catalog"]
+    E --> G
+    F --> G
+`} />
+
+翻译也是类似。
+
+长页面不再一次性整页塞给模型，而是按 markdown block 拆块翻译。已经翻译过、源页面又没变的页面，也不需要重翻。真正需要处理的，只是 dirty pages。
+
+这个优化不一定让单次请求特别短，但会明显减少不必要的请求次数。
+
+---
+
+## 七、让 Provider 的 Prompt Cache 更容易命中
+
+本地缓存解决的是“完全一样的输入不要再调模型”。
+
+但还有一种情况：输入不是完全一样，但前面一大段 prompt 是一样的。
+
+比如批量生成 wiki 页面时，每个页面的证据不同，但这些内容通常是相同的：
+
+- 写作规则
+- 引用格式
+- JSON 输出格式
+- 不允许编造证据
+- 页面结构要求
+- 图表生成规则
+
+如果每次请求的前缀都稳定，服务商的 prefix cache 就更容易命中。
+
+所以 CodeWiki 后来把 message 拆成了稳定部分和动态部分。
+
+<Mermaid diagram={`
+flowchart TD
+    A["System prompt"] --> B["稳定规则和输出契约"]
+    B --> C["稳定仓库上下文"]
+    C --> D["当前页面的动态证据"]
+    D --> E["模型生成结果"]
+`} />
+
+这件事的核心不是“少发 token”，而是“让重复 token 更容易被缓存”。
+
+特别是在 DeepSeek 这类支持 prompt cache 指标的 provider 上，项目还会记录：
+
+- cache hit tokens
+- cache miss tokens
+- cache hit ratio
+
+这点很重要。优化不能只靠感觉，要能看到缓存到底有没有命中。
+
+后面 CodeWiki 还做了一个小细节：批量生成时，先生成第一个 leaf page，再并发生成后续 leaf pages。这样可以先把稳定前缀喂给 provider，后面的请求更容易吃到 prefix cache。
+
+---
+
+## 八、Agent 场景也要压 evidence
+
+还有一条线是给 Agent 用的。
+
+CodeWiki 后来加了一个 compact evidence 脚本。这个东西是干什么的？
+
+原始 wiki evidence 往往很大，里面可能有完整 retrieval trace、context pack、大段 chunk body、很多 graph nodes 和 edges。如果直接把这些东西塞进 Codex 或 Claude 的对话上下文，agent 很快就被撑满了。
+
+所以 compact evidence 做了一次裁剪：
+
+- 只保留少量 source refs。
+- 每个源码片段只截一小段 excerpt。
+- 保留必要的符号和关系摘要。
+- 明确省略完整 trace、完整 context pack、大段源码正文。
+
+<Mermaid diagram={`
+flowchart LR
+    A["原始 Wiki Evidence"] --> B["裁剪 source refs"]
+    B --> C["截短源码片段"]
+    C --> D["保留符号和关系摘要"]
+    D --> E["生成 compact evidence"]
+    E --> F["Agent 用小证据包写 Wiki"]
+`} />
+
+这其实是把前面的 GraphRAG 思想又用到了 agent 工作流里。
+
+应用内部调用模型时，要给模型小而准的 context pack。Agent 写 wiki 时，也要给 agent 小而准的 evidence pack。
+
+本质是一样的：不要把原始材料全塞进去，只给足够支撑写作的证据。
+
+---
+
+## 九、整个优化链路串起来看
+
+如果把整个过程串起来，大概是这样：
+
+<Mermaid diagram={`
+flowchart BT
+    A["过滤测试、构建产物、lockfile 等噪声"] --> B["GraphRAG 精准检索"]
+    B --> C["Token budget 控制上下文大小"]
+    C --> D["去重和轻量 payload"]
+    D --> E["本地 LLM response cache"]
+    E --> F["增量 embedding 和增量翻译"]
+    F --> G["Provider prefix cache"]
+    G --> H["Agent compact evidence"]
+`} />
+
+这不是某一个 prompt 技巧，而是一套分层工程策略。
+
+每一层都解决一个问题：
+
+| 问题 | 优化方式 |
+|------|----------|
+| 仓库太大 | GraphRAG 检索 |
+| 检索结果还是太多 | token budget |
+| 上下文里有噪声 | 文件角色过滤 |
+| 同一内容重复出现 | payload 去重 |
+| 重复请求太多 | 本地 LLM cache |
+| embedding 重复计算 | content hash 去重和增量同步 |
+| wiki 页面太多 | catalog 按规模控制 |
+| 翻译重复跑 | dirty page 复用 |
+| provider 重复前缀多 | stable message + prefix cache |
+| agent evidence 太大 | compact evidence |
+
+---
+
+## 十、真正的变化：别让模型干本地系统更擅长的活
+
+最后总结一下。
+
+CodeWiki 的 token 优化，表面上看是在省 token，实际上是在重新划分系统职责。
+
+早期的思路更像是：
+
+> 我怕模型不懂，所以多给它一点。
+
+优化后的思路变成：
+
+> 我先在本地把证据找准、压好、排好，再让模型基于证据表达。
+
+这个变化很关键。
+
+代码理解产品里，很多事情本地系统其实更擅长：
+
+- 扫描文件。
+- 解析 AST。
+- 建代码图谱。
+- 做全文检索。
+- 算 hash。
+- 判断文件角色。
+- 做增量更新。
+- 复用缓存。
+
+这些事便宜、稳定、可控，不应该都丢给 LLM。
+
+LLM 真正适合做的是最后一步：把已经筛好的证据组织成解释、回答、文档和翻译。
+
+所以 CodeWiki 的 token 优化路线，可以浓缩成一句话：
+
+> 先用工程系统把上下文变小、变准、变稳定、可复用，然后再交给模型。
+
+这比单纯“把 prompt 写短一点”更重要。因为当系统规模变大以后，真正决定成本的不是某一句 prompt，而是整个上下文生产链路。 

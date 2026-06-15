@@ -2,10 +2,15 @@
 import { randomUUID } from 'node:crypto';
 
 const id = `mermaid-${randomUUID().slice(0, 8)}`;
-const { diagram } = Astro.props;
+const { diagram, size, compact = false } = Astro.props;
+const sizeClass = ['sm', 'md', 'lg', 'wide'].includes(size) ? `mermaid-${size}` : '';
+const compactClass = compact ? 'mermaid-compact' : '';
+const verticalClass = /^\s*(?:flowchart|graph)\s+(?:TD|TB)\b/m.test(diagram)
+  ? 'mermaid-vertical'
+  : '';
 ---
 
-<div class="mermaid-wrap" id={`wrap-${id}`}>
+<div class={`mermaid-wrap ${sizeClass} ${compactClass} ${verticalClass}`} id={`wrap-${id}`}>
   <div class="mermaid-stage" data-stage>
     <div class="mermaid-pane" data-pane>
       <pre id={id} class="mermaid">{diagram}</pre>
@@ -75,6 +80,9 @@ const { diagram } = Astro.props;
         const viewBoxWidth = svg.viewBox?.baseVal?.width || 0;
         const renderedWidth = svg.getBoundingClientRect().width || 0;
         const baseWidth = Math.max(viewBoxWidth, renderedWidth, 640);
+        const compact = wrap.classList.contains("mermaid-compact");
+        const vertical = wrap.classList.contains("mermaid-vertical");
+        const baseScale = compact ? 0.72 : 1;
         svg.removeAttribute("width");
         svg.removeAttribute("height");
         svg.style.maxWidth = "100%";
@@ -87,7 +95,7 @@ const { diagram } = Astro.props;
 
         function apply() {
           if (!expanded && zoom === 1) {
-            svg.style.width = "";
+            svg.style.width = compact ? `${Math.round(baseWidth * baseScale)}px` : "";
             svg.style.maxWidth = "100%";
           } else {
             svg.style.width = `${Math.round(baseWidth * zoom)}px`;
@@ -115,6 +123,13 @@ const { diagram } = Astro.props;
           return expanded || zoom > 1;
         }
 
+        function centerHorizontalScroll() {
+          if (!vertical || expanded) return;
+          requestAnimationFrame(() => {
+            stage.scrollLeft = Math.max(0, (stage.scrollWidth - stage.clientWidth) / 2);
+          });
+        }
+
         function enterExpand() {
           expanded = true;
           savedScroll = {
@@ -140,6 +155,7 @@ const { diagram } = Astro.props;
           stage.scrollLeft = 0;
           stage.scrollTop = 0;
           apply();
+          centerHorizontalScroll();
           window.scrollTo(savedScroll.left, savedScroll.top);
         }
 
@@ -157,6 +173,7 @@ const { diagram } = Astro.props;
           apply();
           stage.scrollLeft = expanded ? Math.max(0, (svg.clientWidth - stage.clientWidth) / 2) : 0;
           stage.scrollTop = expanded ? Math.max(0, (svg.clientHeight - stage.clientHeight) / 2) : 0;
+          centerHorizontalScroll();
         });
         wrap.querySelector("[data-action='expand']")?.addEventListener("click", () => {
           if (expanded) exitExpand(); else enterExpand();
@@ -196,6 +213,7 @@ const { diagram } = Astro.props;
         });
 
         apply();
+        centerHorizontalScroll();
       } catch (e) {
         console.warn("[Mermaid] render failed:", e);
         el.removeAttribute("data-rendered");
@@ -226,6 +244,18 @@ const { diagram } = Astro.props;
   .mermaid-pane svg {
     display: block;
     margin: 0 auto;
+  }
+  .mermaid-sm .mermaid-pane svg {
+    max-width: min(100%, 640px) !important;
+  }
+  .mermaid-md .mermaid-pane svg {
+    max-width: min(100%, 820px) !important;
+  }
+  .mermaid-lg .mermaid-pane svg {
+    max-width: min(100%, 980px) !important;
+  }
+  .mermaid-wide .mermaid-pane svg {
+    max-width: min(100%, 1120px) !important;
   }
   .mermaid-pane pre {
     margin: 0;

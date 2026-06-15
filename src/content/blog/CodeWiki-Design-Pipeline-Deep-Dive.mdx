@@ -1,0 +1,652 @@
+---
+title: "CodeWiki 设计思路深度解析：从代码扫描到 GraphRAG，再到 Wiki 生成 Pipeline"
+date: '2026-01-16T12:00:00.000Z'
+tags:
+  - CodeWiki
+  - GraphRAG
+  - Code Analysis
+  - Pipeline
+  - LLM
+categories:
+  - LLM
+  - Engineering
+slug: 2026/01/16/codewiki-design-pipeline-deep-dive
+excerpt: 深入拆解 CodeWiki 的整体设计：RepoScanner、AST 解析、Code Graph、社区检测、GraphRAG 检索、Wiki 生成、增量更新和 LLM 缓存是怎么串成一条代码理解流水线的。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+CodeWiki 这个项目最有意思的地方，不是“它能生成代码 Wiki”这么简单。
+
+更核心的是，它没有把代码理解这件事全部丢给 LLM。它的设计更像一个本地代码知识库：先用确定性的工程系统把仓库扫描、解析、构图、检索、压缩好，然后再让 LLM 做最后的解释和写作。
+
+换句话说，CodeWiki 的思路不是：
+
+> 把代码塞给模型，让模型自己理解。
+
+而是：
+
+> 先把代码变成可查询的结构化知识，再把最相关的证据交给模型。
+
+这篇文章就从源码结构和 pipeline 的角度，把 CodeWiki 的设计拆开讲一遍。
+
+---
+
+## 一、整体架构：LLM 不是第一步，本地分析才是第一步
+
+CodeWiki 的整体链路可以概括成下面这张图：
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["Repo path / Git URL"] --> B["RepoScanner<br/>扫描文件和 Git 信息"]
+    B --> C["AnalysisPipeline<br/>AST、图谱、社区"]
+    C --> D["CodeWikiStore<br/>graph / chunks / wiki / llm runs"]
+    D --> E["GraphRAGRetriever<br/>检索符号、源码块、图关系"]
+    E --> F["LLM Workflows<br/>Wiki / Ask / Community"]
+    F --> G["FastAPI / CLI / MCP"]
+    G --> H["Frontend<br/>Graph / Wiki / Ask"]
+`} />
+
+这个架构里最重要的分工是：
+
+- Scanner 和 AST parser 负责事实。
+- GraphBuilder 负责把事实组织成图。
+- GraphRAG 负责从图和源码块里找证据。
+- LLM 负责把证据写成人能读懂的解释。
+- Store 负责让这些结果可复用、可增量更新、可追踪。
+
+所以 CodeWiki 不是一个“prompt 包装器”。它更像是一个代码理解数据库，只是最后接了 LLM 写作能力。
+
+---
+
+## 二、第一条主线：代码分析 Pipeline
+
+CodeWiki 分析一个仓库，入口大致在 `AnalysisService`，真正共享的核心流程在 `AnalysisPipeline`。
+
+这个 pipeline 干的事情非常明确：
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["RepoScanResult"] --> B["parse_scanned_files"]
+    B --> C["AstSymbol 列表"]
+    C --> D["GraphBuilder.build"]
+    D --> E["CodeGraph<br/>nodes + edges"]
+    E --> F["CommunityDetector.detect"]
+    F --> G["CommunityRecordBuilder"]
+    G --> H["CodeWikiStore 持久化"]
+`} />
+
+可以把它理解成四层转换：
+
+| 阶段 | 输入 | 输出 | 作用 |
+|------|------|------|------|
+| 扫描 | 仓库目录 | `RepoScanResult` | 找到文件、语言、hash、Git 信息 |
+| 解析 | 源码文件 | `AstSymbol` | 提取函数、类、方法、调用、导入 |
+| 构图 | scan + symbols | `CodeGraph` | 建节点和边 |
+| 社区 | graph | communities | 把相关模块聚成子系统 |
+
+这里最关键的是中间态 `AstSymbol`。它是 AST 层和图谱层之间的桥。不同语言的 parser 最后都尽量归一成类似这样的东西：
+
+```python
+AstSymbol(
+    type="function",
+    name="generate_page",
+    file_path="backend/app/services/wiki/page_generator.py",
+    start_line=...,
+    end_line=...,
+    imports=[...],
+    calls=[...],
+    references=[...],
+    metadata={...},
+)
+```
+
+这一步很重要，因为 Python、TypeScript、Go、Java、Rust 的语法都不一样，但 CodeWiki 后面的 GraphBuilder 不想关心这些语言细节。它只想拿到一组标准化符号，然后统一构图。
+
+---
+
+## 三、RepoScanner：先把仓库变成“可分析文件集合”
+
+`RepoScanner` 并不负责理解代码逻辑。它负责的是把仓库整理成一个干净的输入集合。
+
+它大概做这些事：
+
+- 识别本地路径或 Git URL。
+- 遍历文件系统。
+- 应用 `.gitignore` 和默认忽略规则。
+- 跳过二进制文件和过大的文件。
+- 判断文件语言。
+- 计算文件 hash、行数、最近提交信息。
+
+为什么这层重要？
+
+因为如果扫描阶段不干净，后面所有东西都会被污染。比如把 `node_modules`、`dist`、lockfile 都放进分析 pipeline，后面的 AST 解析、GraphRAG 检索、Wiki 证据都会被噪声拖慢。
+
+所以 CodeWiki 的第一层设计思路就是：先把仓库输入收拾干净。
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["仓库目录"] --> B["FileSystemWalker"]
+    B --> C["IgnoreMatcher"]
+    C --> D{"是否可分析?"}
+    D -- "否" --> E["跳过"]
+    D -- "是" --> F["scan_file"]
+    F --> G["语言、hash、行数、mtime"]
+    G --> H["RepoScanResult"]
+`} />
+
+---
+
+## 四、AST Parser：用确定性事实打底
+
+CodeWiki 没有一开始就问模型“这个函数是干什么的”。它先用 tree-sitter 和语言插件把代码里的事实抓出来。
+
+AST 层大致分三块：
+
+- `capture_specs`：定义每种语言怎么抓函数、类、导入等语法节点。
+- `capture_engine`：把 tree-sitter 的 capture 结果标准化。
+- `augmenters`：做语言特定增强，比如 endpoint、schema、exports、receiver method。
+
+这样做的好处是，很多事实不需要模型猜：
+
+- 一个函数在哪个文件、哪几行。
+- 一个类继承了谁。
+- 一个文件 import 了什么。
+- 一个 route 对应哪个 handler。
+- 一个函数里调用了哪些名字。
+
+这些都是确定性分析更擅长的事。
+
+LLM 很强，但不应该让它从一大坨源码里猜“这个函数在哪一行”。这类事实应该由 parser 给出来。
+
+---
+
+## 五、Code Graph：把文件、符号和关系串起来
+
+有了 `AstSymbol` 之后，GraphBuilder 会把仓库变成 Code Graph。
+
+这个图里有几类常见节点：
+
+- repository
+- directory
+- file
+- config
+- module
+- class
+- interface
+- schema
+- function
+- method
+- endpoint
+
+也有几类常见边：
+
+- `contains`：目录包含文件，类包含方法。
+- `defines`：文件定义函数或类。
+- `imports`：文件导入另一个文件或模块。
+- `exports`：文件导出符号。
+- `calls`：函数调用函数。
+- `references`：符号引用另一个符号。
+- `inherits`：类继承。
+- `implements`：类实现接口。
+- `routes_to`：endpoint 指向 handler。
+- `uses_config`：代码使用配置。
+
+GraphBuilder 的流程可以画成这样：
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["RepoScanResult + AstSymbols"] --> B["创建 repository / directory / file 节点"]
+    B --> C["创建 class / function / method / endpoint 等符号节点"]
+    C --> D["解析 imports / modules / config edges"]
+    D --> E["建立 contains / defines / exports / inherits"]
+    E --> F["解析 calls / references / routes_to"]
+    F --> G["写入 confidence 和 provenance"]
+    G --> H["CodeGraph"]
+`} />
+
+这里有一个细节很值得注意：边不是只有 source 和 target。CodeWiki 还会记录 provenance，也就是这条边为什么存在、置信度如何、是不是 inferred。
+
+这让前端图谱和后续 GraphRAG 都可以区分“确定事实”和“推断关系”。代码理解工具最怕把猜测包装成事实，这个 provenance 设计就是为了解决这个问题。
+
+---
+
+## 六、社区检测：把大图切成子系统
+
+代码图一大，单纯节点和边还是很难读。
+
+所以 CodeWiki 会在图上做社区检测，把强相关节点聚成模块或子系统。社区本身也会被持久化，后面可以用于：
+
+- 前端图谱导航。
+- Wiki catalog 规划。
+- GraphRAG 的 community summaries。
+- LLM 给社区命名和生成摘要。
+
+这个流程大概是：
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["CodeGraph"] --> B["CommunityDetector"]
+    B --> C["图分区"]
+    C --> D["CommunityRecordBuilder"]
+    D --> E["GraphCommunityRecord"]
+    E --> F["可选 LLM 命名和摘要"]
+`} />
+
+这里的设计也很克制：社区检测本身是图算法，不负责写描述；LLM 命名只是增强步骤。也就是说，即使没有 LLM，CodeWiki 也能得到确定性的社区结构。
+
+---
+
+## 七、GraphRAG：不是搜文件，而是搜“图 + 源码块 + 社区”
+
+CodeWiki 的 GraphRAG 是整个项目里非常核心的一层。
+
+它不是简单做全文搜索，而是把几种信号合起来：
+
+- symbol seed：query 是否命中函数名、类名、路径、签名等。
+- FTS：源码块全文检索。
+- optional vector：语义向量检索。
+- graph expansion：从种子节点沿图谱扩展上下游。
+- community summaries：把命中的节点放回社区上下文里。
+- token budget：最后只打包最有价值的 source chunks。
+
+完整检索链路大概是这样：
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["query"] --> B["过滤 wiki 噪声图"]
+    B --> C["seed_from_symbols"]
+    A --> D["FTS 搜 source chunks"]
+    A --> E["可选 vector search"]
+    C --> F["seed nodes"]
+    D --> F
+    E --> F
+    F --> G["graph expansion"]
+    G --> H["related_edges"]
+    G --> I["select_source_chunks<br/>按预算打包"]
+    G --> J["community_summaries"]
+    H --> K["context_pack"]
+    I --> K
+    J --> K
+    K --> L["RetrievalTrace"]
+`} />
+
+这层的输出是 `RetrievalTrace`，里面包含：
+
+- seed nodes
+- expanded nodes
+- related edges
+- source chunks
+- community summaries
+- context pack
+- trace id
+
+注意这里的 `trace_id` 很有用。它让一次检索结果可以作为缓存 key 的一部分。也就是说，如果同一个页面主题检索到的是同一包证据，后面的 LLM 生成就更容易复用缓存。
+
+---
+
+## 八、source chunk：代码不是按文件塞，而是按符号切
+
+GraphRAG 要能工作，前提是代码要先切成合理的 chunk。
+
+CodeWiki 的 chunk 不是简单按固定行数切，也不是整文件塞进去。它更倾向于基于图谱节点，也就是函数、类、method、schema、endpoint 这些 source node 来切。
+
+这样 chunk 天然有语义边界：
+
+- 一个函数是一块。
+- 一个类是一块。
+- 一个 endpoint 是一块。
+- 一个 schema 是一块。
+
+这比“每 200 行切一块”更适合代码理解，因为模型看到的是完整符号，而不是被硬切断的半截逻辑。
+
+同时 chunk 会带上：
+
+- `node_id`
+- `file_path`
+- `start_line`
+- `end_line`
+- `content_hash`
+- `token_count`
+
+这些字段后面会用于引用、去重、增量更新和缓存。
+
+---
+
+## 九、Wiki 生成：Catalog 先规划，Page 再落地
+
+CodeWiki 的 Wiki 生成不是直接让模型“给我写一份文档”。
+
+它分成两大步：
+
+1. 先生成 catalog，也就是 Wiki 的目录结构。
+2. 再按 catalog 逐页生成页面。
+
+`WikiGenerator` 本身更像 facade，真正干活的是：
+
+- `WikiCatalogGenerator`
+- `WikiPageGenerator`
+- `WikiPageOrchestrator`
+- `WikiTranslator`
+- `WikiTranslationOrchestrator`
+- `WikiAgentWorkflow`
+
+整体关系大概这样：
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["WikiGenerator Facade"] --> B["CatalogGenerator"]
+    A --> C["PageOrchestrator"]
+    A --> D["Translator"]
+    A --> E["AgentWorkflow"]
+    B --> F["生成目录结构"]
+    C --> G["按目录生成页面"]
+    D --> H["翻译和复用页面"]
+    E --> I["Agent 写 Wiki 的 plan/evidence/save/validate"]
+`} />
+
+这个 facade 设计挺实用。API、CLI、MCP 不需要知道里面到底有几个 workflow，只调用 `generate_catalog`、`generate_all_pages`、`update_pages`、`translate_wiki` 这些入口就行。
+
+---
+
+## 十、Catalog 生成：先决定“应该写哪些页面”
+
+Catalog 生成时，CodeWiki 会先做一次 repository overview 的 GraphRAG 检索，再结合 repo context、模块候选、社区摘要、仓库规模，构造一个 catalog prompt。
+
+这个 prompt 不是简单问模型“生成目录”。它会给模型很多约束：
+
+- 必须有 Overview、Architecture、Reading Guide、Dependencies。
+- 不要按文件机械拆页。
+- 要按子系统、工作流、API surface、数据层来拆。
+- 小仓库少拆，大仓库多拆。
+- 页面必须带 source hints。
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["repository overview query"] --> B["GraphRAG retrieve"]
+    B --> C["repo_context"]
+    B --> D["graph_facts"]
+    B --> E["source_chunk_summaries"]
+    C --> F["catalog payload"]
+    D --> F
+    E --> F
+    G["catalog_limits"] --> F
+    H["module_candidates"] --> F
+    F --> I["LLM 生成 catalog JSON"]
+    I --> J["validate + normalize"]
+    J --> K["save_doc_catalog"]
+`} />
+
+这里有两个很好的设计点。
+
+第一，catalog scale 是按仓库规模动态算出来的。小项目就别硬拆几十页，大项目才允许更多层级。
+
+第二，catalog 只是目录，不直接生成正文。先规划，再逐页生成，可以让后续页面都有明确主题和 source hints。
+
+---
+
+## 十一、Page 生成：先叶子页，再父页面
+
+页面生成不是从上到下，而是先生成叶子页，再生成父页面。
+
+为什么？
+
+因为父页面往往应该总结子页面。如果先生成父页面，它没有子页面内容，只能空泛地写。先生成叶子页，父页面就可以拿到 `child_page_summaries`，写出来会更像真正的层级文档。
+
+`WikiPageOrchestrator` 的流程大概是：
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["Catalog items"] --> B["generation_nodes"]
+    B --> C["找出 leaf pages"]
+    C --> D["先生成第一个 leaf<br/>预热 provider prefix cache"]
+    D --> E["并发生成剩余 leaf pages"]
+    E --> F["按深度从深到浅生成 parent pages"]
+    F --> G["父页面读取 child_page_summaries"]
+    G --> H["保存所有 DocPageRecord"]
+`} />
+
+这里还有一个 token 优化的小心思：第一个 leaf page 先单独生成，后面的 leaf pages 再并发。这样 provider 更容易先建立稳定前缀缓存，后面的页面生成更容易命中 prefix cache。
+
+---
+
+## 十二、单页生成：证据、约束、校验，一个都不能少
+
+单个页面生成时，流程比想象中严谨。
+
+`WikiPageGenerator.generate_page` 大概会做这些事：
+
+1. 从 catalog item 取出 title、slug、topic、source hints。
+2. 用 topic 跑 GraphRAG retrieve。
+3. 把 source hints 对应的 chunk 补进 trace。
+4. 从 trace 里生成 graph refs 和 source refs。
+5. 生成服务端 diagram plan。
+6. 用 ReadFile evidence 读取源码片段。
+7. 构造 page payload。
+8. 拆成 stable contract、stable repo context、dynamic page payload。
+9. 调 LLM，要求返回 JSON。
+10. 校验 JSON、引用、source refs、diagram slots。
+11. 组合 Markdown、插入来源、插入 Mermaid 图。
+12. 校验 Mermaid，失败就降级去掉坏图。
+13. 保存为 generated 或 draft。
+
+画出来是这样：
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["Catalog item"] --> B["GraphRAG retrieve(topic)"]
+    B --> C["补充 source_hints chunks"]
+    C --> D["生成 source_refs / graph_refs"]
+    D --> E["ReadFile evidence"]
+    E --> F["PageGenerationPayload"]
+    F --> G["stable contract"]
+    F --> H["stable repo context"]
+    F --> I["dynamic page payload"]
+    G --> J["LLMOperation"]
+    H --> J
+    I --> J
+    J --> K["LLM JSON response"]
+    K --> L["PageResponseValidator"]
+    L --> M{"校验通过?"}
+    M -- "是" --> N["compose markdown + sources + diagrams"]
+    M -- "否" --> O["repair attempt 或 draft"]
+    N --> P["Mermaid validate"]
+    P --> Q["save DocPageRecord"]
+    O --> Q
+`} />
+
+这个设计背后的原则很清楚：LLM 可以写，但不能随便写。
+
+它写出来的页面必须经过校验：
+
+- 引用的 source ref 必须存在。
+- 不能引用不存在的图谱节点。
+- diagram slot 必须是服务端允许的。
+- Mermaid 语法要能过。
+- JSON 结构要符合要求。
+
+这就是 source-grounded wiki 的关键。文档不是模型凭空写出来的，而是由检索证据约束出来的。
+
+---
+
+## 十三、LLM 调用层：把缓存、审计和 provider 差异统一起来
+
+CodeWiki 没有在业务代码里到处直接调用 LLM。它抽了一层 `LLMOperation` 和 `CachedLLMService`。
+
+一个 LLMOperation 会包含：
+
+- task type
+- messages
+- input payload
+- cache namespace
+- cache parts
+- model alias
+- prompt version
+- response format
+- provider user id
+
+然后 `CachedLLMService` 统一交给 `complete_with_cache`。
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["业务 workflow"] --> B["LLMOperation"]
+    B --> C["CachedLLMService"]
+    C --> D["payload_hash + cache_key"]
+    D --> E{"llm_run 有缓存?"}
+    E -- "有" --> F["复用 response_content"]
+    E -- "没有" --> G["LLMGateway 调 provider"]
+    G --> H["normalize_usage"]
+    F --> I["record llm_run"]
+    H --> I
+    I --> J["tokens / cache hit ratio / status 可追踪"]
+`} />
+
+这一层解决了几个问题：
+
+- 本地 response cache。
+- provider usage 字段不统一的问题。
+- prompt cache hit tokens 的标准化。
+- 失败时脱敏记录错误。
+- 每次调用都有 run record 可审计。
+
+这也是为什么 CodeWiki 后面能做 token 优化分析。因为每次 LLM 调用的 tokens、usage、cache hit、prompt version 都被记录下来了。
+
+---
+
+## 十四、增量更新：不要一改文件就全仓重来
+
+代码理解工具如果每次都全量分析，项目稍微大一点就很难用。
+
+CodeWiki 的增量更新思路是：
+
+1. 用 Git diff 和文件 hash 找出 changed/new/deleted/unchanged。
+2. unchanged 文件的 symbols 从旧 graph 里恢复。
+3. 只解析 changed/new 文件。
+4. 用新 symbols + 复用 symbols 重新构图。
+5. 只刷新受影响文件的 chunks。
+6. 标记受影响 wiki pages 为 stale。
+7. 可选自动重生成 stale pages。
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["当前仓库"] --> B["scan with known hashes"]
+    B --> C["IncrementalUpdatePlan"]
+    C --> D["changed / new / deleted / unchanged"]
+    D --> E["从旧 graph 恢复 unchanged symbols"]
+    D --> F["只解析 changed + new"]
+    E --> G["重建 CodeGraph"]
+    F --> G
+    G --> H["刷新 affected chunks"]
+    H --> I["mark stale wiki pages"]
+    I --> J["可选重生成 stale pages"]
+`} />
+
+这个设计不只是为了速度，也是在省 token。
+
+因为 wiki 页面、GraphRAG chunks、embedding、LLM cache 都和内容 hash、trace id、source refs 有关系。只更新变更部分，很多旧页面和旧 LLM 结果就可以继续复用。
+
+---
+
+## 十五、Ask Pipeline：问答也是基于 GraphRAG，不是裸问模型
+
+Ask 功能也遵循同一个原则。
+
+用户问问题时，系统不是把问题直接发给 LLM，而是先跑 GraphRAG：
+
+<Mermaid size="sm" compact diagram={`
+flowchart TD
+    A["用户问题"] --> B["GraphRAG retrieve"]
+    B --> C["PromptContext<br/>source refs + graph facts"]
+    C --> D["Stable QA contract"]
+    D --> E["Dynamic QA payload"]
+    E --> F["LLM answer"]
+    F --> G["返回答案和 sources"]
+`} />
+
+这里的好处是，回答可以带来源，而且模型被限制在检索上下文里回答。它不是凭印象说“可能是这样”，而是根据 source chunks、文件行号和图谱关系回答。
+
+---
+
+## 十六、为什么这个设计能控 token
+
+现在回头看，CodeWiki 的 token 优化不是单独的一招，而是自然长在这个架构里的。
+
+因为它从一开始就把代码理解拆成了很多确定性步骤：
+
+| 层 | 本地系统做什么 | LLM 做什么 |
+|----|----------------|------------|
+| Scanner | 找文件、过滤、算 hash | 不参与 |
+| AST | 抽取符号、调用、导入 | 不参与 |
+| Graph | 建节点、边、置信度 | 不参与 |
+| Community | 聚类子系统 | 可选命名 |
+| GraphRAG | 检索和打包证据 | 不参与 |
+| Wiki | 构造证据 payload | 写作和修复 |
+| Validation | 校验引用和图表 | 不参与 |
+| Cache | 判断是否复用 | 不参与 |
+
+LLM 只出现在真正需要语言表达的地方：
+
+- 社区命名。
+- Catalog 规划。
+- Page 文档写作。
+- QA 回答。
+- 翻译。
+
+而且每次出现，前面都有本地证据约束，后面有校验兜底。
+
+这就是 CodeWiki 的设计核心：让 LLM 做它擅长的表达和综合，不让它承担扫描、解析、检索、索引、缓存这些本地系统更擅长的活。
+
+---
+
+## 十七、我觉得最值得借鉴的几个点
+
+第一，先构建中间表示，再接 LLM。
+
+CodeWiki 的 `AstSymbol`、`CodeGraph`、`RetrievalTrace` 都是中间表示。它们让系统不依赖某一次 prompt 的偶然结果，而是有稳定的数据层。
+
+第二，业务入口要薄，pipeline 要清楚。
+
+API、CLI、MCP 都只是入口。真正的工作在 service 层：AnalysisPipeline、GraphRAGRetriever、WikiGenerator、IncrementalUpdater。这样同一套能力可以被多个入口复用。
+
+第三，检索不是只搜文本。
+
+CodeWiki 的 GraphRAG 同时看 symbol、FTS、vector、graph expansion、community。代码理解里，图关系非常重要，只搜文本会漏掉很多“调用链上的相关性”。
+
+第四，生成不是结束，校验才是结束。
+
+Wiki 页面必须过 source refs、graph refs、Mermaid、JSON shape 的校验。过不了就修复，修不好就 draft。这个比“模型生成了就保存”可靠得多。
+
+第五，增量和缓存不是后期优化，而是架构能力。
+
+文件 hash、content hash、trace id、llm_run、prompt version 这些字段一开始看起来琐碎，但它们决定了系统能不能复用历史结果。
+
+---
+
+## 十八、最后总结
+
+CodeWiki 的设计可以用一句话概括：
+
+> 用确定性代码分析构建本地知识库，用 GraphRAG 找到最小可靠证据包，再让 LLM 做最后的表达。
+
+它不是把 LLM 当万能大脑，而是把 LLM 放在一条工程 pipeline 的后半段。
+
+这条 pipeline 大概长这样：
+
+<Mermaid size="sm" compact diagram={`
+flowchart LR
+    A["RepoScanner"] --> B["AST Parser"]
+    B --> C["Code Graph"]
+    C --> D["Community Detection"]
+    D --> E["GraphRAG Index"]
+    E --> F["RetrievalTrace"]
+    F --> G["Wiki / Ask Payload"]
+    G --> H["Cached LLM Operation"]
+    H --> I["Validation"]
+    I --> J["Stored Wiki / Answer"]
+    J --> K["Incremental Update Reuse"]
+    K --> E
+`} />
+
+这也是我觉得它最有参考价值的地方：它没有迷信大上下文，而是在认真做上下文生产。
+
+很多代码理解产品最后拼的不是谁的 prompt 更长，而是谁能更稳定地把“正确、相关、可引用、可复用”的上下文生产出来。CodeWiki 的整体设计，就是围绕这件事展开的。

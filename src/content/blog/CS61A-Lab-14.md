@@ -151,7 +151,8 @@ def address_oneline(text):
     block_number = r"\d{3,5}"
     cardinal_dir = r"(?:[NEWS] )?" # whitespace is important!
     street = r"(?:[A-Z][A-Za-z]+ )+"
-    type_abbr = r"[A-Z][a-z]{1,4}\b"    street_name = f"{cardinal_dir}{street}{type_abbr}"
+    type_abbr = r"[A-Z][a-z]{1,4}\b"
+    street_name = f"{cardinal_dir}{street}{type_abbr}"
     return bool(re.search(f"{block_number} {street_name}", text))
 ```
 
@@ -186,9 +187,11 @@ Let’s understand and modify the functionality of this BNF with a few questions
 
 > Use Ok to test your knowledge by choosing the best answer for each of the following “What Would PyCombinator Do” questions:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q wwpd-bnf -u ``` |
+
+> ```
+ python3 ok -q wwpd-bnf -u
+> ```
+
 
 ## Submit
 

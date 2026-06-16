@@ -414,9 +414,11 @@ However, your method needs to also include the reflective damage logic:
 
 > *Hint:* Damaging a bee may cause it to be removed from its place. If you iterate over a list, but change the contents of that list at the same time, you [may not visit all the elements](https://docs.python.org/3/tutorial/controlflow.html#for-statements). This can be prevented by making a > copy of the list. You can either use a list slice, or use the built-in `list` function.
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 4 5 6 7 ``` | ``` >>> lst = [1,2,3,4] >>> lst[:] [1, 2, 3, 4] >>> list(lst) [1, 2, 3, 4] >>> lst[:] is not lst and list(lst) is not lst True ``` |
+
+> ```python
+ >>> lst = [1,2,3,4] >>> lst[:] [1, 2, 3, 4] >>> list(lst) [1, 2, 3, 4] >>> lst[:] is not lst and list(lst) is not lst True
+> ```
+
 
 Once you’ve finished implementing the `FireAnt`, give it a class attribute `implemented` with the value `True`.
 
@@ -526,9 +528,11 @@ In addition, you will need to make the following modifications throughout your p
 
 > The constructor of `ContainerAnt.__init__` is implemented as follows:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 ``` | ``` def __init__(self, *args, **kwargs):     super().__init__(*args, **kwargs)     self.ant_contained = None ``` |
+
+> ```python
+ def __init__(self, *args, **kwargs):     super().__init__(*args, **kwargs)     self.ant_contained = None
+> ```
+
 >
 > As we saw in Hog, `args` is bound to all positional arguments (which are all arguments passed without keywords), and `kwargs` is bound to all the keyword arguments. This ensures that both sets of arguments are passed to the Ant constructor.
 >

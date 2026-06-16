@@ -30,9 +30,11 @@ For each of the following regular expressions, suggest a string that would be fu
 
 > Use Ok to test your knowledge by choosing the best answer for each of the following questions:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q wwrm -u ``` |
+
+> ```
+ python3 ok -q wwrm -u
+> ```
+
 
 > A hexadecimal color code begins with `#` and is followed by exactly six hexadecimal numbers, which can be the digits 0-9 or letters a-f.
 

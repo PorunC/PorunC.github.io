@@ -179,7 +179,8 @@ void NetworkInterface::send_datagram(const InternetDatagram &dgram, const Addres
         to_send.header().src = _ethernet_address;
         to_send.header().type = EthernetHeader::TYPE_IPv4;
         _frames_out.emplace(to_send);
-    } else {                                          // if destination Ethernet address unkown
+    } else {
+      // if destination Ethernet address unknown
         if (!get<bool>(_arp_retransmission_timer)) {  // no arp sent yet
             send_arp_request(next_hop_ip);
         }

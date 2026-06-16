@@ -105,9 +105,11 @@ def two_of_three(i, j, k):
 
 > **Hint:** Consider using the `max` or `min` function:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 4 ``` | ``` >>> max(1, 2, 3) 3 >>> min(-1, -2, -3) -3 ``` |
+
+> ```python
+ >>> max(1, 2, 3) 3 >>> min(-1, -2, -3) -3
+> ```
+
 
 ### Q5: Largest Factor
 

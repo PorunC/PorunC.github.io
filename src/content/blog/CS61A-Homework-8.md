@@ -117,9 +117,11 @@ python3 ok -q match_time✂️
 
 > For the next two problems, you can test your code on [code.cs61a.org](https://code.cs61a.org/) by adding the following line at the beginning before the problem’s skeleton code:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 ``` | ``` ?start: link -- replace link with tree_node for the next question ``` |
+
+> ```
+ ?start: link -- replace link with tree_node for the next question
+> ```
+
 
 In this problem, we’re going to define a BNF that parses integer Linked Lists created in Python. We won’t be handling `Link.empty`.
 

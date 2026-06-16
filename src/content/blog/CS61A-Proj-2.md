@@ -299,9 +299,11 @@ Here are some examples:
 >
 > These two calls to `sphinx_swaps` should take about the same amount of time to evaluate:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 4 5 ``` | ``` >>> limit = 4 >>> sphinx_swaps("roses", "arose", limit) > limit True >>> sphinx_swaps("rosesabcdefghijklm", "arosenopqrstuvwxyz", limit) > limit True ``` |
+
+> ```python
+ >>> limit = 4 >>> sphinx_swaps("roses", "arose", limit) > limit True >>> sphinx_swaps("rosesabcdefghijklm", "arosenopqrstuvwxyz", limit) > limit True
+> ```
+
 
 Before writing any code, unlock the tests to verify your understanding of the question:
 
@@ -352,9 +354,11 @@ You may modify the template however you want or delete it entirely.
 >
 > These two calls to `minimum_mewtations` should take about the same amount of time to evaluate:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 4 5 ``` | ``` >>> limit = 2 >>> minimum_mewtations("ckiteus", "kittens", limit) > limit True >>> minimum_mewtations("ckiteusabcdefghijklm", "kittensnopqrstuvwxyz", limit) > limit True ``` |
+
+> ```python
+ >>> limit = 2 >>> minimum_mewtations("ckiteus", "kittens", limit) > limit True >>> minimum_mewtations("ckiteusabcdefghijklm", "kittensnopqrstuvwxyz", limit) > limit True
+> ```
+
 
 Before writing any code, unlock the tests to verify your understanding of the question:
 
@@ -430,9 +434,11 @@ You can upload a message to the multiplayer server by calling the `upload` funct
 
 > **Hint:** See the dictionary below for an example of a potential input into the `upload` function. This dictionary represents a player with `user_id` 1 and `progress` 0.6.
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` {'id': 1, 'progress': 0.6} ``` |
+
+> ```
+ {'id': 1, 'progress': 0.6}
+> ```
+
 
 Before writing any code, unlock the tests to verify your understanding of the question:
 

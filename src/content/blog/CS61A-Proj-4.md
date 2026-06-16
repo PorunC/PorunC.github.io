@@ -239,9 +239,11 @@ Implement the `define` and `lookup` methods of the `Frame` class, in `scheme_cla
 2. ```
    lookup
 
-   |  |  |
-   | --- | --- |
-   | ``` 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 ``` | ```     takes a symbol and returns the value bound to that symbol in the first frame of the environment in which the symbol is bound. The     environment     for a     ```plaintext Frame ``` |
+
+```
+     takes a symbol and returns the value bound to that symbol in the first frame of the environment in which the symbol is bound. The     environment     for a     ```plaintext Frame
+```
+
 
     
 
@@ -443,15 +445,19 @@ scm> tau
 
 > Once you have completed Problem 5, make sure you submit using OK to receive full credit for the first checkpoint.
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok --submit ``` |
+
+> ```
+ python3 ok --submit
+> ```
+
 >
 > If you’d like to check your score so far, use the following command:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok --score ``` |
+
+> ```
+ python3 ok --score
+> ```
+
 
 ## Part 2: Procedures
 
@@ -769,15 +775,19 @@ If you have passed all of the required cases, you should see 1/1 points received
 
 > One you have completed Part III, make sure you submit using OK to receive full credit for the checkpoint.
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok --submit ``` |
+
+> ```
+ python3 ok --submit
+> ```
+
 >
 > If you’d like to check your score so far, use the following command:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok --score ``` |
+
+> ```
+ python3 ok --score
+> ```
+
 >
 > **The best way to see what tests you’ve passed for the checkpoint is to use the score command in ok.**
 
@@ -938,9 +948,18 @@ python3 ok -q optional_1
 
 > We used `let` while defining `let-to-lambda`. What if we want to run `let-to-lambda` on an interpreter that does not recognize `let`? We can pass `let-to-lambda` to itself to rewrite itself into an *equivalent program without* `let`:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 4 5 6 7 8 9 10 11 12 ``` | ``` ;; The let-to-lambda procedure (define (let-to-lambda expr)  ...)  ;; A list representing the let-to-lambda procedure (define let-to-lambda-code   '(define (let-to-lambda expr)      ...))  ;; A let-to-lambda procedure that does not use 'let'! (define let-to-lambda-without-let   (let-to-lambda let-to-lambda-code)) ``` |
+
+> ```scheme
+ ;; The let-to-lambda procedure
+ (define (let-to-lambda expr) ...)
+ ;; A list representing the let-to-lambda procedure
+ (define let-to-lambda-code
+   '(define (let-to-lambda expr) ...))
+ ;; A let-to-lambda procedure that does not use 'let'!
+ (define let-to-lambda-without-let
+   (let-to-lambda let-to-lambda-code))
+> ```
+
 
 ## Optional Problem 2 (0 pt)
 

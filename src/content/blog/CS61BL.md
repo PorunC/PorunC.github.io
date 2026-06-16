@@ -126,14 +126,55 @@ _board.setViewingPerspective(Side.NORTH);
 
 3. Move all the tiles to make them adjacent
 
-   |  |  |
-   | --- | --- |
-   | ``` 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 ``` | ``` for (int row = size - 1; row >= 0; row -- ) {   Tile t = _board.tile(col, row);   if (t != null) {     // find nextPos which is null     int nextPos = 3;     while (nextPos >= row) {       if (_board.tile(col, nextPos) == null) {         break;       }       nextPos -- ;     }     // check if nextPos is a legal position     if (nextPos >= row) {       _board.move(col, nextPos, t);       changed = true;     }   } ``` |
+
+```
+ for (int row = size - 1; row >= 0; row -- ) {
+  Tile t = _board.tile(col, row);
+if (t != null) {
+  // find nextPos which is null     int nextPos = 3;     while (nextPos >= row) {
+  if (_board.tile(col, nextPos) == null) {
+  break;       }       nextPos -- ;     }     // check if nextPos is a legal position     if (nextPos >= row) {
+  _board.move(col, nextPos, t);
+changed = true;     }   }
+```
+
 4. merge the tiles if they have the same value between one and the one next to it
 
-   |  |  |
-   | --- | --- |
-   | ``` 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 ``` | ``` for (int row = 3; row >= 0; row -- ) {   Tile curTile = _board.tile(col, row);   // find out the next row's tile   int nextLine = row - 1;   if (nextLine < 0) {     break;   }   Tile nextTile = _board.tile(col, nextLine);   // if one of the two tile is null we break this loop   if (curTile == null || nextTile == null) {     break;   }   int nextValue = nextTile.value();   if (nextValue == curTile.value()) {     // merge the two tiles whose value are equaled     _board.move(col, row, nextTile);     _score += curTile.value() * 2;     // move the tiles behind the two merged tiles to the place where the second tiles was     for (int p = nextLine - 1; p >= 0; p -- ) {       Tile tile = _board.tile(col, p);       if (tile == null) {         break;       }       if (p < size) {         _board.move(col, p + 1, tile);       }     }     changed = true;   } } ``` |
+
+```java
+```
+for (int row = 3; row >= 0; row -- ) {
+  Tile curTile = _board.tile(col, row);
+  // find out the next row's tile
+  int nextLine = row - 1;
+  if (nextLine < 0) {
+    break;
+  }
+  Tile nextTile = _board.tile(col, nextLine);
+  // if one of the two tile is null we break this loop
+  if (curTile == null || nextTile == null) {
+    break;
+  }
+  int nextValue = nextTile.value();
+  if (nextValue == curTile.value()) {
+    // merge the two tiles whose value are equaled
+    _board.move(col, row, nextTile);
+    _score += curTile.value() * 2;
+    // move the tiles behind the two merged tiles to the place where the second tiles was
+    for (int p = nextLine - 1; p >= 0; p -- ) {
+      Tile tile = _board.tile(col, p);
+      if (tile == null) {
+        break;
+      }
+      if (p < size) {
+        _board.move(col, p + 1, tile);
+      }
+    }
+    changed = true;
+  }
+}
+```
+
 
 The full Complication
 

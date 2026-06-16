@@ -20,9 +20,11 @@ excerpt: >-
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q control -u ``` |
+
+> ```
+ python3 ok -q control -u
+> ```
+
 >
 > **Hint**: Make sure your `while` loop conditions eventually evaluate to a false value, or they’ll never stop! Typing `Ctrl-C` will stop infinite loops in the interpreter.
 
@@ -99,9 +101,11 @@ ______
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q short-circuit -u✂️ ``` |
+
+> ```
+ python3 ok -q short-circuit -u✂️
+> ```
+
 
 ```plaintext
 >>> True and 13
@@ -298,9 +302,11 @@ python3 ok --submit
 
 > Use Ok to test your knowledge with the following “What Would Python Display?” questions:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 ``` | ``` python3 ok -q if-statements -u✂️ ``` |
+
+> ```
+ python3 ok -q if-statements -u✂️
+> ```
+
 >
 > **Hint**: `print` (unlike `return`) does *not* cause the function to exit.
 

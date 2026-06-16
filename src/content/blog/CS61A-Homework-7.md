@@ -115,9 +115,16 @@ python3 ok -q kwlist_construct✂️
 
 > **Important**: For the following questions, your implementations should be invariant with respect to the abstraction used; that is, it should work regardless of whether `kwlist1` or `kwlist2` is used. Specifically, in the tests, we will define the abstraction `kwlist` as either `kwlist1` or `kwlist2`:
 >
-> |  |  |
-> | --- | --- |
-> | ``` 1 2 3 4 5 6 7 8 ``` | ``` scm> (define make-kwlist make-kwlist1) scm> (define get-keys-kwlist get-keys-kwlist1) scm> (define get-values-kwlist get-values-kwlist1) ; tests here... scm> (define make-kwlist make-kwlist2) scm> (define get-keys-kwlist get-keys-kwlist2) scm> (define get-values-kwlist get-values-kwlist2) ; tests here... ``` |
+
+> ```scheme
+ scm> (define make-kwlist make-kwlist1)
+ scm> (define get-keys-kwlist get-keys-kwlist1)
+ scm> (define get-values-kwlist get-values-kwlist1) ; tests here...
+ scm> (define make-kwlist make-kwlist2)
+ scm> (define get-keys-kwlist get-keys-kwlist2)
+ scm> (define get-values-kwlist get-values-kwlist2) ; tests here...
+> ```
+
 >
 > **You should refer to the above `kwlist` procedures, not `kwlist1` or `kwlist2`’s procedures in your implementation.**
 

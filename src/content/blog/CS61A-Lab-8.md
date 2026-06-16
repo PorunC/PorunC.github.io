@@ -74,12 +74,15 @@ def repeated(t, k):
             cnt = 1
         prev = item
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q repeated✂️
 ```
+```python
 
 ### Q2: Merge
 
@@ -89,6 +92,7 @@ You will probably find it helpful to use the two-argument version of the built-i
 
 See the doctest for examples of behavior.
 
+```python
 ```python
 def merge(incr_a, incr_b):
     """Yield the elements of strictly increasing iterables incr_a and incr_b, removing
@@ -131,12 +135,15 @@ def merge(incr_a, incr_b):
         next_b = next(iter_b, None)
 
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q merge✂️
 ```
+```python
 
 ## Linked Lists & Trees
 
@@ -146,6 +153,7 @@ A linked list that contains one or more linked lists as elements is called a *de
 
 > **Hint:** Use `isinstance` to check if something is an instance of an object.
 
+```python
 ```python
 def deep_len(lnk):
     """ Returns the deep length of a possibly deep linked list.
@@ -168,12 +176,15 @@ def deep_len(lnk):
     else:
         return deep_len(lnk.first) + deep_len(lnk.rest)
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q deep_len✂️
 ```
+```python
 
 ### Q4: Add Leaves
 
@@ -191,6 +202,7 @@ Here is an example of a tree `t`(shown on the left) and the result after `add_d_
 
 > **Hint:** Use a helper function to keep track of the depth!
 
+```python
 ```python
 def add_d_leaves(t, v):
     """Add d leaves containing v to each node at every depth d.
@@ -265,12 +277,15 @@ def add_d_leaves(t, v):
 
     dfs(t, 0, v)
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q add_d_leaves✂️
 ```
+```python
 
 ## Efficiency
 
@@ -288,6 +303,7 @@ Choose the term that fills in the blank for the functions defined below: `<funct
 Assume that `len` runs in constant time and `all` runs in linear time in the length of its input. Selecting an element of a list by its index requires constant time. Constructing a range requires constant time.
 
 ```plaintext
+```python
 def count_partitions(n, m):
     """Counts the number of partitions of a positive integer n, 
     using parts up to size m."""
@@ -321,12 +337,14 @@ def binary_search(lst, n):
             low = middle + 1
     return -1
 ```
+```python
 
 > The `is_palindrome` question was reformatted from question 6(d) on fall 2019’s [final](https://cs61a.org/exam/fa19/final/61a-fa19-final.pdf#page=7).
 
 Use Ok to test your understanding:
 
 ```bash
+```python
 python3 ok -q efficiency_practice -u
 Q: The count_partitions function runs in ____ time in the length of its input.
 
@@ -373,14 +391,17 @@ Choose the number of the correct choice:
 ---------------------------------------------------------------------
 OK! All cases for efficiency_practice unlocked.
 ```
+```python
 
 ## Submit
 
 Make sure to submit this assignment by running:
 
 ```plaintext
+```python
 python3 ok --submit
 ```
+```python
 
 # Extra Practice
 
@@ -394,6 +415,7 @@ Write a function that takes in a list and returns all possible subsequences of t
 
 In order to accomplish this, you might first want to write a function `insert_into_all` that takes an item and a list of lists, adds the item to the beginning of each nested list, and returns the resulting list.
 
+```python
 ```python
 def insert_into_all(item, nested_list):
     """Return a new list consisting of all the lists in nested_list,
@@ -422,12 +444,15 @@ def subseqs(s):
         tmp = subseqs(s[1:])
         return insert_into_all(s[0], tmp) + tmp
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q subseqs✂️
 ```
+```python
 
 ### Q7: Non-Decreasing Subsequences
 
@@ -440,6 +465,7 @@ This time we have another condition: we only want the subsequences for which con
 You may use the provided helper function `insert_into_all`, which takes in an `item` and a list of lists and inserts the `item` to the front of each list.
 
 ```plaintext
+```python
 def non_decrease_subseqs(s):
     """Assuming that S is a list, return a nested list of all subsequences
     of S (a list of lists) for which the elements of the subsequence
@@ -465,12 +491,15 @@ def non_decrease_subseqs(s):
             return insert_into_all(________, ______________) + ________________
     return subseq_helper(____, ____)
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q non_decrease_subseqs✂️
 ```
+```python
 
 ## Mutable Lists
 
@@ -483,6 +512,7 @@ To interleave two sequences `s0` and `s1` is to create a new sequence such that 
 > **Note:** If you’re running into an issue where the special heart / diamond / spades / clubs symbols are erroring in the doctests, feel free to copy paste the below doctests into your file as these don’t use the special characters and should not give an “illegal multibyte sequence” error.
 
 ```plaintext
+```python
 def card(n):
     """Return the playing card numeral as a string for a positive n <= 13."""
     assert type(n) == int and n > 0 and n <= 13, "Bad card n"
@@ -515,12 +545,15 @@ def shuffle(cards):
         _________________
     return shuffled
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q shuffle✂️
 ```
+```python
 
 ## Generators & Iterators
 
@@ -529,6 +562,7 @@ python3 ok -q shuffle✂️
 Write a generator function `pairs` that takes a list and yields all the possible pairs of elements from that list.
 
 ```python
+```python
 def pairs(lst):
     """
     >>> type(pairs([3, 4, 5]))
@@ -536,27 +570,30 @@ def pairs(lst):
     >>> for x, y in pairs([3, 4, 5]):
     ...     print(x, y)
     ...
-    3 3
-    3 4
-    3 5
-    4 3
-    4 4
-    4 5
-    5 3
-    5 4
-    5 5
+3
+4
+5
+3
+4
+5
+3
+4
+5
     """
     "*** YOUR CODE HERE ***"
     for x in lst:
         for y in lst:
             yield x, y
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q pairs✂️
 ```
+```python
 
 ### Q10: Pairs (iterator)
 
@@ -565,20 +602,21 @@ python3 ok -q pairs✂️
 Now write an iterator that does the same thing. You are only allowed to use a linear amount of space - so computing a list of all of the possible pairs is not a valid answer. Notice how much harder it is - this is why generators are useful.
 
 ```plaintext
+```python
 class PairsIterator:
     """
     >>> for x, y in PairsIterator([3, 4, 5]):
     ...     print(x, y)
     ...
-    3 3
-    3 4
-    3 5
-    4 3
-    4 4
-    4 5
-    5 3
-    5 4
-    5 5
+3
+4
+5
+3
+4
+5
+3
+4
+5
     """
     def __init__(self, lst):
         "*** YOUR CODE HERE ***"
@@ -589,12 +627,15 @@ class PairsIterator:
     def __iter__(self):
         "*** YOUR CODE HERE ***"
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q PairsIterator✂️
 ```
+```python
 
 ## Trees
 
@@ -603,6 +644,7 @@ python3 ok -q PairsIterator✂️
 Implement `long_paths`, which returns a list of all *paths* in a tree with length at least `n`. A path in a tree is a linked list of node values that starts with the root and ends at a leaf. Each subsequent element must be from a child of the previous value’s node. The *length* of a path is the number of edges in the path (i.e. one less than the number of nodes in the path). Paths are listed in order from left to right. See the doctests for some examples.
 
 ```plaintext
+```python
 def long_paths(tree, n):
     """Return a list of all paths in tree with length at least n.
 
@@ -634,12 +676,15 @@ def long_paths(tree, n):
     """
     "*** YOUR CODE HERE ***"
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q long_paths✂️
 ```
+```python
 
 ## Linked Lists
 
@@ -648,6 +693,7 @@ python3 ok -q long_paths✂️
 Write a recursive function `flip_two` that takes as input a linked list `s` and mutates `s` so that every pair of values in the linked list is flipped.
 
 ```plaintext
+```python
 def flip_two(s):
     """
     >>> one_lnk = Link(1)
@@ -664,9 +710,11 @@ def flip_two(s):
     # For an extra challenge, try writing out an iterative approach as well below!
     "*** YOUR CODE HERE ***"
 ```
+```python
 
 Use Ok to test your code:
 
 ```plaintext
+```python
 python3 ok -q flip_two✂️
 ```

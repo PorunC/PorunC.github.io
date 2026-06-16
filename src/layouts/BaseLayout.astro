@@ -1,4 +1,5 @@
 ---
+import MarkdownMermaid from '../components/MarkdownMermaid.astro';
 import { NAV_ITEMS, SITE } from '../lib/site';
 
 interface Props {
@@ -59,6 +60,7 @@ const canonical = new URL(Astro.url.pathname, SITE.url).href;
       </footer>
     </div>
 
+    <MarkdownMermaid />
     <script is:inline>
       window.MathJax = {
         tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] },
@@ -102,7 +104,7 @@ const canonical = new URL(Astro.url.pathname, SITE.url).href;
         }
 
         function enhanceCodeBlocks() {
-          document.querySelectorAll('.article-body pre:not(.mermaid):not([data-copy-ready])').forEach((pre) => {
+          document.querySelectorAll('.article-body pre:not(.mermaid):not([data-language="mermaid"]):not([data-copy-ready])').forEach((pre) => {
             const text = pre.querySelector('code')?.innerText ?? pre.innerText;
             if (!text.trim()) return;
 

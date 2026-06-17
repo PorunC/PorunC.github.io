@@ -246,6 +246,99 @@ OpenAI Codex Skills 文档也采用相似结构：技能是目录，包含 `SKIL
 
 Codex 最佳实践还提醒：Skill 要保持一个清晰工作，description 要说明它做什么、什么时候用，并尽量包含用户真实触发语。这个建议非常关键，因为 description 不是普通简介，而是隐式路由规则。
 
+## 17. 深度补充：Skill 为什么会在上下文爆炸之后出现
+
+Skill 的出现不是偶然的。Agent 用得越久，团队越会遇到一个问题：有些方法不是全局规则，也不是一次性 prompt，更不是 API 工具，但它们反复出现、很有价值、又不能长期塞在上下文里。
+
+例如：
+
+1. 写某类技术博客的结构要求。
+2. 做代码审查时的检查清单。
+3. 处理 Excel 的固定转换脚本。
+4. 生成项目文档时的引用规范。
+5. 设计图像素材时的风格模板。
+6. 某个公司内部工单处理 SOP。
+
+如果都放 system prompt，会污染所有任务；如果每次让用户重复粘贴，会浪费时间且不稳定；如果做成 Tool，又表达不了“方法、规则、资源、脚本、模板”的组合。Skill 正好填补这个中间层。
+
+| 抽象 | 适合保存 |
+| --- | --- |
+| System Prompt | 永远成立的安全和行为不变量 |
+| User Prompt | 当前任务目标和约束 |
+| Tool | 一个可执行动作 |
+| Memory | 用户偏好和历史事实 |
+| Skill | 完成一类任务的可复用方法包 |
+
+这也是 progressive disclosure 的根本价值：不是让 Skill 更神秘，而是让 Agent 只在需要时付出上下文成本。
+
+## 18. 应用方式：把一次成功经验沉淀成 Skill
+
+一个经验要不要 Skill 化，可以看它是否满足“三可”：
+
+1. 可复用：不是一次性技巧，未来还会遇到。
+2. 可描述：能写成步骤、规则、rubric 或模板。
+3. 可验证：产物好坏能检查，最好有脚本或清单。
+
+把经验沉淀成 Skill 的流程可以是：
+
+<Mermaid size="wide" diagram={`
+flowchart LR
+  Repeat["重复任务"] --> Extract["提取稳定步骤"]
+  Extract --> Boundary["定义适用/不适用边界"]
+  Boundary --> SkillMD["编写 SKILL.md"]
+  SkillMD --> Resources["拆分 references/scripts/assets"]
+  Resources --> Eval["准备触发和产物评估样本"]
+  Eval --> Iterate["根据使用 trace 迭代"]
+`} />
+
+例如“写 Agent 系列博客”可以沉淀为 Skill：description 写明用于把本地资料和联网资料整理成中文深度技术博客；SKILL.md 说明需要 frontmatter、Mermaid、为什么/解决什么问题/工程取舍；references 放写作结构样例；scripts 放 MDX 检查或链接检查；assets 放图表模板。
+
+这样下一次任务不是重新解释一堆要求，而是触发一个可复用的写作工作流。
+
+## 19. 为什么 Skill 不是知识库
+
+Skill 很容易被误用成小型知识库：把一堆资料塞进 references，然后希望 Agent 自己看。这样会失去 Skill 的价值。
+
+Skill 的核心是“怎么做”，知识库的核心是“知道什么”。两者可以配合，但不能混淆。
+
+| 维度 | Skill | 知识库/RAG |
+| --- | --- | --- |
+| 核心问题 | 遇到这类任务怎么做 | 当前问题需要哪些事实 |
+| 内容形态 | 流程、规则、模板、脚本 | 文档、记录、网页、资料 |
+| 触发方式 | 任务意图匹配 | 查询语义检索 |
+| 评价方式 | 任务成功率、步骤遵循 | 召回率、忠实度、引用准确 |
+
+一个客服 Skill 可以说明“如何处理退款场景”：先识别订单、查政策、调用退款资格工具、必要时转人工。但退款政策原文、订单数据和历史工单应该在 RAG/DB/Tool 里，不应全塞进 Skill。
+
+## 20. Skill 的工程取舍
+
+Skill 带来复用，也带来治理成本。
+
+| 取舍 | 风险 | 处理方式 |
+| --- | --- | --- |
+| Skill 太大 | 加载后上下文仍然爆炸 | 主文件短，长资料按需 references |
+| Skill 太小 | 完成任务要拼很多 Skill | 按完整工作流切分 |
+| description 太宽 | 误触发 | 写清适用、不适用、关键词 |
+| scripts 太自由 | 供应链和安全风险 | 脚本审计、权限限制、沙箱 |
+| 版本不管理 | 产物风格漂移 | Skill version、变更记录、eval |
+| 缺少评估 | 不知道有没有帮助 | 触发率和产物质量对比 |
+
+企业里更需要 Skill registry：谁能发布、谁能安装、哪些 Skill 被白名单允许、脚本能否联网、是否能访问文件、是否经过安全审计。Skill 越像软件包，就越要按软件供应链治理。
+
+## 21. 面试追问视角：可以怎么回答
+
+如果被问“Skill 和 Tool 最大区别是什么”，可以答：
+
+> Tool 是动作接口，告诉 Agent 能调用什么；Skill 是任务方法包，告诉 Agent 遇到某类任务如何组织步骤、使用资源和产出结果。Skill 可以包含脚本和模板，也可以指导如何使用工具，但它本身不是一次工具调用。
+
+如果被问“为什么需要 progressive disclosure”，可以答：
+
+> 因为 Agent 上下文有限，而且无关规则会干扰任务。启动时只加载 name/description 用于发现，命中后加载 SKILL.md，长 references 和 assets 按需读取。这样既能沉淀复杂方法，又不让所有任务长期背负上下文成本。
+
+如果被问“如何评估 Skill”，可以答：
+
+> 准备该用和不该用的任务样本，看触发准确率；准备产物 rubric，看使用 Skill 前后的任务成功率、步骤遵循率、质量、成本和安全事件。Skill 也要像代码一样回归测试。
+
 ## 参考资料
 
 - [Equipping Agents for the Real World with Agent Skills, Anthropic](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)

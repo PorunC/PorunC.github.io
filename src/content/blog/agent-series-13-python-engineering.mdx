@@ -235,9 +235,148 @@ dataclasses 官方文档提供了轻量结构化数据对象，这很适合 Agen
 
 concurrent.futures 文档说明了 ThreadPoolExecutor 和 ProcessPoolExecutor 的不同用途。Agent 中 IO 密集任务适合 asyncio 或线程，CPU 密集任务例如本地 embedding、PDF 解析、静态分析，则更适合进程池或独立服务。不要用一个事件循环硬扛所有工作。
 
+## 15. 深度补充：Python 不是胶水，而是 Agent 的控制面
+
+很多人把 Python 在 Agent 里的角色理解成“调 API 的胶水代码”。这会低估工程风险。Agent 的核心循环、工具注册、状态管理、RAG pipeline、并发调度、流式输出、评估回放，最后大多都落在 Python 控制面里。
+
+模型输出是不确定的，但 Python 控制面应该尽量确定：
+
+| Agent 不确定性 | Python 控制面要做什么 |
+| --- | --- |
+| 模型可能选错工具 | Tool Registry、Schema 校验、权限检查 |
+| 模型可能循环太久 | max_steps、timeout、cost budget |
+| 工具可能失败 | 重试、错误分类、observation |
+| 状态可能污染 | dataclass/Pydantic、copy、checkpoint |
+| 并发可能失控 | semaphore、TaskGroup、backpressure |
+| 输出可能不合规 | parser、guardrail、结构化输出 |
+
+所以 Python 工程不是“基础语法”，而是在给概率模型搭一个确定的运行笼架。写得松散，模型问题会被放大；写得清晰，模型能力才能稳定释放。
+
+## 16. 应用方式：一个可维护 Agent 工程的模块划分
+
+一个中等复杂度的 Python Agent 项目，可以按下面方式拆：
+
+```text
+agent_app/
+  agents/
+    planner.py
+    executor.py
+  tools/
+    registry.py
+    schemas.py
+    order_tools.py
+    search_tools.py
+  rag/
+    ingest.py
+    retrieve.py
+    rerank.py
+  runtime/
+    loop.py
+    context.py
+    state.py
+    policy.py
+    tracing.py
+  evals/
+    datasets/
+    run_eval.py
+    judges.py
+  clients/
+    llm.py
+    vector_db.py
+  tests/
+```
+
+这种划分的好处是：模型逻辑、工具实现、运行控制、评估脚本彼此独立。工具可以单测，RAG 可以单独评估，Agent loop 可以回放 trace，LLM client 可以替换模型提供商。
+
+最不推荐的是把所有东西写在一个 `main.py` 里：先拼 prompt，再调用模型，再 if/else 执行工具，再拼下一轮 messages。Demo 可以这样，生产会很快变成无法回放、无法评估、无法限权的黑盒。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+  Loop["runtime/loop.py"] --> Context["runtime/context.py"]
+  Loop --> Policy["runtime/policy.py"]
+  Loop --> Registry["tools/registry.py"]
+  Loop --> LLM["clients/llm.py"]
+  Registry --> Schemas["tools/schemas.py"]
+  Registry --> Handlers["tool handlers"]
+  Context --> RAG["rag/retrieve.py"]
+  Loop --> Trace["runtime/tracing.py"]
+  Trace --> Evals["evals/run_eval.py"]
+`} />
+
+## 17. 为什么 asyncio 常常是 Agent 的第一道性能杠杆
+
+Agent 的慢，很多时候不是模型单次调用慢，而是多个 IO 被串行执行：搜索、RAG、rerank、工具 API、多个 judge、多个子任务。如果这些步骤彼此独立，就应该并发。
+
+但 `asyncio.gather` 不是万金油。生产里要考虑：
+
+| 问题 | 处理 |
+| --- | --- |
+| 下游 rate limit | 用 semaphore 限并发 |
+| 单个任务失败 | 收集异常或 TaskGroup 结构化取消 |
+| 超时 | `asyncio.timeout` 或客户端 timeout |
+| 用户取消 | 取消关联任务，清理资源 |
+| 部分成功 | 返回可用结果和失败原因 |
+| 背压 | 队列满时拒绝或延迟处理 |
+
+并发工具执行的目标不是“同时跑更多”，而是在不打爆下游的前提下降低端到端延迟。对 LLM API、向量库、搜索 API 来说，限流和退避与并发同样重要。
+
+## 18. 代码骨架：最小可治理 ReAct Loop
+
+下面是一个概念骨架，不追求可直接运行，而是展示边界应该放在哪里：
+
+```python
+async def run_agent(task: str, runtime: Runtime, max_steps: int = 8) -> AgentResult:
+    state = AgentState(task=task)
+
+    for step in range(max_steps):
+        messages = runtime.context.build(state)
+        model_output = await runtime.llm.generate(
+            messages=messages,
+            tools=runtime.tools.visible_schemas(state),
+            timeout=runtime.policy.model_timeout,
+        )
+
+        runtime.trace.record_model_step(step, messages, model_output)
+
+        if model_output.final_answer:
+            return runtime.output.validate(model_output.final_answer, state)
+
+        for call in model_output.tool_calls:
+            tool = runtime.tools.get(call.name)
+            args = tool.schema.validate(call.arguments)
+            runtime.policy.check_tool_allowed(tool, args, state)
+
+            try:
+                observation = await runtime.executor.run(tool, args, state)
+            except ToolError as exc:
+                observation = Observation.from_error(exc)
+
+            runtime.trace.record_tool_call(step, call, observation)
+            state = state.with_observation(call, observation)
+
+    return AgentResult.incomplete(state=state, reason="max_steps_exceeded")
+```
+
+这段骨架体现几个原则：上下文由 Context Builder 生成；工具由 Registry 管；参数先校验再执行；权限在 Policy 里；错误变成 observation；trace 贯穿模型和工具；达到 max_steps 时返回可解释的未完成状态。
+
+## 19. 面试追问视角：可以怎么回答
+
+如果被问“Python Agent 最容易出什么工程 bug”，可以答：
+
+> 状态共享和异步并发。比如多个分支修改同一个 dict、忘记 await coroutine、没有 timeout、工具异常没有转成 observation、messages 无限增长、工具结果过大撑爆上下文。这些都不是模型问题，是控制面问题。
+
+如果被问“为什么要封装 LLM client”，可以答：
+
+> 因为生产需要统一处理 timeout、retry、rate limit、streaming、token 统计、日志脱敏、模型路由和 fallback。直接在业务里到处调 SDK，会让治理逻辑散落，后续换模型或做回放很难。
+
+如果被问“如何实现一个工具注册系统”，可以答：
+
+> 用装饰器注册普通函数，同时保存 name、description、JSON schema、handler、permission、timeout、risk level。模型只看到 schema，执行前由注册表找到 handler，再经过 schema 校验和 policy check。
+
 ## 参考资料
 
 - [Python asyncio: Coroutines and Tasks](https://docs.python.org/3/library/asyncio-task.html)
 - [Python dataclasses Documentation](https://docs.python.org/3/library/dataclasses.html)
 - [Python concurrent.futures Documentation](https://docs.python.org/3/library/concurrent.futures.html)
 - [OpenAI Agents SDK: Running Agents](https://openai.github.io/openai-agents-python/running_agents/)
+- [OpenAI Agents SDK: Tools](https://openai.github.io/openai-agents-python/tools/)

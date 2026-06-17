@@ -214,9 +214,92 @@ NIST AI Risk Management Framework 把 AI 风险治理拆成 Govern、Map、Measu
 
 系统设计里还有一个容易忽视的点：LLM API 本身是外部依赖。它的 rate limit、P99 延迟、模型版本变化都会影响你的 SLA。因此多模型 fallback、请求队列、降级策略和成本告警不是高级优化，而是企业级 Agent 的基础设施。
 
+## 13. 深度补充：生产 Agent 本质上是分布式系统
+
+很多 Agent Demo 看起来只是一个聊天接口：用户发消息，后端调用模型，返回结果。但一旦进入生产，它会同时依赖模型服务、向量库、对象存储、业务数据库、搜索服务、沙箱、第三方 API、队列和前端实时通道。它不是一个“聪明函数”，而是一条多依赖、多状态、多失败点的分布式链路。
+
+这也是为什么企业级 Agent 不能只用 Web 请求生命周期承载。一个报告生成任务可能需要几十次模型调用和工具调用；一个代码任务可能要读写文件、跑测试、修复失败、再次测试；一个客服任务可能要查订单、查政策、创建工单、等待审批。同步 HTTP 只是入口，不是运行时。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+  API["API / Chat Gateway"] --> Queue["任务队列"]
+  Queue --> Runner["Agent Runner Pool"]
+  Runner --> State["State Store / Checkpoint"]
+  Runner --> Model["Model Gateway"]
+  Runner --> Tool["Tool Executor"]
+  Runner --> RAG["RAG / Memory"]
+  Runner --> Trace["Trace / Metrics / Logs"]
+  Tool --> Biz["业务系统"]
+  Tool --> Sandbox["代码沙箱"]
+  Model --> ProviderA["模型提供商 A"]
+  Model --> ProviderB["模型提供商 B"]
+  Runner --> Notify["SSE / WebSocket / 回调"]
+  Notify --> Client["用户界面"]
+`} />
+
+分布式系统视角会改变设计优先级：状态必须持久化，工具调用必须可重试或幂等，任务必须能恢复，日志必须能串链路，模型和下游服务必须有 timeout、rate limit、fallback 和熔断。否则，Agent 越聪明，事故越难排查。
+
+## 14. 应用方式：三种常见生产架构
+
+第一种是同步轻量架构，适合短问答、简单 RAG、低风险工具。请求在几秒内完成，失败直接返回。它的优势是简单，缺点是难承载长任务。
+
+第二种是异步任务架构，适合报告、代码分析、批量处理、数据分析。入口返回 task_id，后台 Runner 持续执行，前端通过 SSE、WebSocket 或轮询看进度。它能处理长时间任务、重试和削峰，是多数复杂 Agent 的默认形态。
+
+第三种是事件驱动架构，适合企业工作流。Agent 不是只响应聊天，而是订阅事件：新工单、新邮件、新告警、新 PR、新报表请求。每个事件进入队列，由策略决定是否自动处理、人工确认还是只生成建议。
+
+| 架构 | 适合 | 关键能力 |
+| --- | --- | --- |
+| 同步接口 | FAQ、短 RAG、轻工具 | 低延迟、限流、输出校验 |
+| 异步任务 | 报告、代码、数据分析 | checkpoint、进度、恢复、取消 |
+| 事件驱动 | 工单、告警、运营流程 | 幂等、去重、审批、审计 |
+
+## 15. 为什么不能只做一个 Chat Endpoint
+
+只做一个聊天接口会把所有复杂度塞进单次请求里，常见后果是：
+
+1. 用户断开后任务状态丢失。
+2. 工具超时导致整条请求失败。
+3. 无法取消或恢复长任务。
+4. 没有地方记录中间步骤和审批。
+5. 无法按任务类型做并发和成本控制。
+6. 出错后只能看到最终错误，看不到路径。
+
+生产 Agent 需要把“对话”和“任务”分开。对话是交互层，任务是执行层。一个对话可以创建多个任务，一个任务可以跨多轮对话继续，任务状态可以被暂停、恢复、回放、审计。这个拆分是从玩具应用走向生产系统的关键。
+
+## 16. 可靠性设计：把失败当常态
+
+Agent 链路里任何一步都可能失败：模型限流、工具超时、RAG 没命中、沙箱崩溃、用户权限变化、审批超时、上下文超预算。可靠性设计不是“失败时重试一下”这么简单。
+
+| 失败点 | 设计策略 |
+| --- | --- |
+| 模型 429/5xx | 指数退避、多模型 fallback、请求队列 |
+| 工具超时 | 单工具 timeout、局部重试、返回可行动错误 |
+| 长任务中断 | checkpoint、resume token、状态机恢复 |
+| 成本超限 | step/token/cost 预算，输出当前进度 |
+| 外部依赖挂掉 | 熔断、降级、人工接管 |
+| 数据不一致 | 幂等键、事务边界、补偿任务 |
+| 版本变更 | prompt/model/tool/schema 版本化和灰度 |
+
+真正成熟的 Agent 系统会把失败路径也设计成产品体验：告诉用户完成了什么、卡在哪里、是否需要授权、是否稍后继续，而不是简单返回“出错了”。
+
+## 17. 面试追问视角：可以怎么回答
+
+如果被问“企业级 Agent 系统设计最重要的是什么”，可以答：
+
+> 不是模型调用，而是运行控制。要有任务队列、状态存储、工具权限、预算限制、trace、降级、评估和安全策略。Agent 是概率系统叠加分布式系统，必须通过工程边界托住不确定性。
+
+如果被问“如何降低 Agent 延迟”，可以答：
+
+> 先用 trace 拆延迟：模型、RAG、rerank、工具、重试、输出校验分别耗时多少。再针对性做模型路由、工具并行、检索缓存、上下文压缩、流式进度、局部重试。不能盲目换更快模型，因为瓶颈可能在工具串行或检索过宽。
+
+如果被问“如何控制成本”，可以答：
+
+> 事前按任务类型设预算，事中累计 token/step/tool/cost，超阈值降级或询问用户，事后按用户和任务聚合分析。工程手段包括模型路由、RAG final_k、工具结果截断、缓存、Batch、prompt 压缩和失败回放优化。
+
 ## 参考资料
 
 - [OpenAI Production Best Practices](https://platform.openai.com/docs/guides/production-best-practices)
 - [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
 - [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework)
+- [OpenAI Agents SDK: Tracing](https://openai.github.io/openai-agents-python/tracing/)
 - [OpenAI API Rate Limits Guide](https://platform.openai.com/docs/guides/rate-limits)

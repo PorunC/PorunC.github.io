@@ -1,0 +1,243 @@
+---
+title: "Agent 知识体系 13：Python 工程实战，从 ReAct 到 RAG Pipeline"
+date: '2023-06-27T12:00:00.000Z'
+tags:
+  - Agent
+  - Python
+  - Engineering
+categories:
+  - LLM
+  - Agent
+slug: 2023/06/27/agent-series-13-python-engineering
+excerpt: 系统整理 Python Agent 工程实战：数据结构、拷贝语义、装饰器、asyncio、并发、GIL、Pandas、大文本处理、批量调用、余弦相似度、LLM API、Streaming、ReAct、Function Calling、RAG Pipeline、向量数据库和多轮对话管理。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+Agent 最后都要落到工程代码里。Python 模块看起来像基础语法复习，其实每个知识点都对应 Agent 系统的真实问题：状态怎么传、工具怎么注册、并发怎么跑、流式输出怎么做、RAG pipeline 怎么实现。
+
+`13_Python工程实战` 模块的核心，是把 Agent 的概念翻译成可维护的 Python 结构。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    A["用户请求"] --> B["Conversation Manager<br/>多轮状态"]
+    B --> C["Agent Loop<br/>ReAct / Function Calling"]
+    C --> D["Tool Registry<br/>装饰器注册"]
+    D --> E["Async Tool Executor<br/>asyncio 并发"]
+    C --> F["RAG Pipeline<br/>chunk / embed / retrieve / rerank"]
+    C --> G["LLM Client<br/>streaming / retry / timeout"]
+    E --> H["Observations"]
+    F --> H
+    G --> H
+    H --> B
+    B --> I["最终响应"]
+`} />
+
+## 1. Python 基础为什么和 Agent 有关
+
+Agent 系统大量依赖 Python 的数据结构和运行时特性：
+
+| 知识点 | Agent 中的体现 |
+| --- | --- |
+| list / tuple / dict | 消息列表、工具注册表、状态对象 |
+| 可变对象 | 状态被多个步骤共享时容易误改 |
+| 浅拷贝 / 深拷贝 | 回滚、分支计划、并发状态隔离 |
+| *args / **kwargs | 工具参数转发 |
+| 装饰器 | 注册工具、埋点、权限检查 |
+| asyncio | 并发模型调用和工具调用 |
+| GIL | CPU 密集任务不能靠线程解决 |
+
+很多 Agent bug 并不是模型问题，而是状态对象被错误复用、异步任务共享了可变 dict、工具参数没有校验。
+
+## 2. 状态管理与拷贝语义
+
+Agent 每一步都在更新 state：当前计划、已完成步骤、工具结果、token 消耗、错误记录。如果状态对象被多个分支共享，就可能产生隐蔽 bug。
+
+例如多 Agent 并行时，如果两个 worker 修改同一个 dict，结果会互相污染。需要明确：
+
+1. 哪些状态只读。
+2. 哪些状态由单个步骤写。
+3. 并发分支是否需要 deep copy。
+4. 合并结果时冲突怎么处理。
+
+Python 的可变对象很方便，但 Agent 状态最好用 dataclass、TypedDict 或 Pydantic 定义结构，减少随意写字段。
+
+## 3. 装饰器与工具注册
+
+装饰器很适合做 Tool Registry。开发者写普通函数，再用 `@tool` 声明名称、描述、参数 Schema、权限级别。
+
+工具注册系统通常要保存：
+
+| 字段 | 用途 |
+| --- | --- |
+| name | 模型调用标识 |
+| description | 工具选择依据 |
+| schema | 参数校验 |
+| handler | 实际执行函数 |
+| permissions | 权限和风险等级 |
+| timeout | 执行上限 |
+
+装饰器还可以用于埋点、重试、脱敏和审计。这样工具实现和治理逻辑不会散落各处。
+
+## 4. asyncio 与并发
+
+Agent 里很多任务是 IO 密集型：调用 LLM API、查询向量库、访问数据库、搜索网页、调用外部服务。`asyncio` 可以显著降低总延迟。
+
+适合并发的场景：
+
+1. 多个独立搜索查询。
+2. 多个 LLM 评审器打分。
+3. 多个工具无依赖调用。
+4. 批量 embedding。
+5. 多用户请求并发处理。
+
+但并发要有限制。需要 semaphore 控制最大并发，避免触发 API rate limit。
+
+GIL 对 IO 密集影响不大，但 CPU 密集任务，例如本地 embedding、大规模 Pandas 处理、代码分析，可能需要 multiprocessing、向量化库或独立服务。
+
+## 5. 批量处理与吞吐
+
+Agent 系统常有批处理需求：批量摘要、批量打标签、批量 embedding、批量评估。单条请求循环调用 API 会很慢，也浪费网络往返。
+
+优化手段：
+
+| 手段 | 说明 |
+| --- | --- |
+| batch API | 离线任务降低成本 |
+| encode_batch | 批量 embedding |
+| asyncio.gather | 并发 IO |
+| 队列 worker | 平滑处理任务 |
+| 结果缓存 | 避免重复处理 |
+| backpressure | 下游慢时限制生产速度 |
+
+吞吐优化要结合失败恢复：批量任务中单条失败不应导致整批失败。
+
+## 6. 大文本与 Pandas
+
+Agent 常处理文档、日志、表格、CSV、Excel。Python 工程里要注意内存和分块。
+
+大文本处理适合流式读取、按段分块、增量写入。Pandas 适合结构化数据清洗、聚合、过滤，但大文件要用 chunksize 或更合适的引擎。
+
+对 Agent 来说，工具层应把大结果加工成模型可消费的摘要，而不是把百万行表格直接塞进上下文。
+
+## 7. 余弦相似度与向量检索
+
+RAG 最小实现通常要理解余弦相似度：衡量两个 embedding 方向是否相近。工程上，自己实现适合学习，小规模可以用 numpy，大规模应交给向量数据库。
+
+需要注意：
+
+1. 离线和在线 embedding 模型必须一致。
+2. 向量要归一化或明确距离度量。
+3. 元数据过滤和向量相似同样重要。
+4. 近似索引会带来召回和速度权衡。
+
+## 8. LLM API 客户端
+
+生产级 LLM client 不应只是 `client.chat(...)`。它至少要封装：
+
+| 能力 | 说明 |
+| --- | --- |
+| 超时 | 防止请求挂死 |
+| 重试 | 处理 429、5xx、网络错误 |
+| 指数退避 | 避免雪崩重试 |
+| 模型路由 | 根据任务选模型 |
+| token 统计 | 成本监控 |
+| 流式输出 | 改善体验 |
+| 日志脱敏 | 保护隐私 |
+
+把这些封装成统一接口，后续换模型提供商或做 fallback 才不会改满项目。
+
+## 9. Streaming
+
+流式输出对用户体验很重要。长任务可以边生成边返回，也可以先返回进度事件：正在检索、正在分析、正在调用工具、正在生成答案。
+
+Streaming 要处理几个细节：
+
+1. 前端断开时是否取消后台任务。
+2. 工具调用期间如何发送进度。
+3. 输出是否需要增量安全过滤。
+4. 最终结果和中间 token 如何区分。
+5. trace 如何记录完整响应。
+
+## 10. ReAct 与 Function Calling 实现
+
+Python 实现 ReAct 的骨架包括：
+
+1. messages 保存对话和工具结果。
+2. tools 保存模型可见 Schema。
+3. registry 保存工具名到函数。
+4. loop 控制 max_steps。
+5. tool_call 执行前校验参数和权限。
+6. observation 追加回 messages。
+7. final answer 结束。
+
+文本解析式 ReAct 容易出错，现代实现应优先使用 Function Calling。即便如此，也要保留 max_steps、错误 observation 和工具结果截断。
+
+## 11. RAG Pipeline 实现
+
+完整 RAG Pipeline 可以拆成离线和在线。
+
+离线：
+
+1. 读取文档。
+2. 清洗和分块。
+3. 添加元数据。
+4. 批量 embedding。
+5. upsert 向量库。
+
+在线：
+
+1. 查询改写。
+2. 查询 embedding。
+3. 向量检索。
+4. rerank。
+5. 拼接 context。
+6. LLM 生成。
+7. 引用和忠实度校验。
+
+Python 代码要把每一步做成独立函数，方便评估和替换。不要把整个 RAG 写成一个巨大的 `answer_question()`。
+
+## 12. 多轮对话管理
+
+多轮对话不等于把所有历史全塞进去。需要管理：
+
+| 内容 | 策略 |
+| --- | --- |
+| 最近对话 | 保留原文 |
+| 早期历史 | 摘要压缩 |
+| 用户偏好 | 写入长期记忆 |
+| 当前任务状态 | 单独 state store |
+| 无关闲聊 | 不进入关键上下文 |
+
+对话管理器要根据 token 预算动态拼上下文，而不是简单 `messages.append()` 到无限长。
+
+## 13. 这个模块的工程结论
+
+Python Agent 工程的重点是把不确定模型放进确定代码结构里：
+
+1. 用清晰数据结构管理状态。
+2. 用装饰器和注册表治理工具。
+3. 用 asyncio 提升 IO 并发，但要限流。
+4. 用统一 LLM client 管超时、重试、成本和 fallback。
+5. RAG pipeline 分步实现，方便评估。
+6. 多轮对话要摘要、检索和状态分离。
+7. 工具结果和大数据要先处理再给模型。
+
+Agent 的智能来自模型，但工程质量来自这些朴素的 Python 结构。
+
+## 14. 外部资料补强：Python 工程要用标准库能力托住 Agent 循环
+
+Python 官方 asyncio 文档强调，直接调用 coroutine 不会执行它，必须 await、create_task 或通过 TaskGroup 调度。这个细节在 Agent 并发工具调用里很容易踩坑：如果忘记 await，工具根本没跑；如果 fire-and-forget 没保存 task 引用，后台任务可能失控或丢失。
+
+`asyncio.gather` 适合并发等待多个 awaitable，但 Python 文档也提示 TaskGroup 提供更强的结构化并发安全性。对 Agent 来说，如果多个并行工具中一个失败，通常希望取消或明确处理其他分支，而不是让异常悄悄传播。因此复杂并发工具执行更适合 TaskGroup 或显式错误收集。
+
+dataclasses 官方文档提供了轻量结构化数据对象，这很适合 Agent State、Tool Result、Eval Result。相比到处传 dict，dataclass 能让字段更清晰，也方便序列化、日志和测试。复杂校验可以再升级到 Pydantic，但 dataclass 是非常好的起点。
+
+concurrent.futures 文档说明了 ThreadPoolExecutor 和 ProcessPoolExecutor 的不同用途。Agent 中 IO 密集任务适合 asyncio 或线程，CPU 密集任务例如本地 embedding、PDF 解析、静态分析，则更适合进程池或独立服务。不要用一个事件循环硬扛所有工作。
+
+## 参考资料
+
+- [Python asyncio: Coroutines and Tasks](https://docs.python.org/3/library/asyncio-task.html)
+- [Python dataclasses Documentation](https://docs.python.org/3/library/dataclasses.html)
+- [Python concurrent.futures Documentation](https://docs.python.org/3/library/concurrent.futures.html)
+- [OpenAI Agents SDK: Running Agents](https://openai.github.io/openai-agents-python/running_agents/)

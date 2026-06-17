@@ -1,0 +1,196 @@
+---
+title: "Agent 知识体系 07：Agent 框架，LangChain、LangGraph 与工作流编排"
+date: '2024-02-05T12:00:00.000Z'
+tags:
+  - Agent
+  - LangGraph
+  - Workflow
+categories:
+  - LLM
+  - Agent
+slug: 2024/02/05/agent-series-07-frameworks
+excerpt: 系统整理 Agent 框架模块：LangChain、LangGraph、AutoGPT、ReAct Agent、CrewAI、Assistants API、开源框架与自研取舍、工作流、DAG、循环流、多 Agent 编排和可观测性。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+Agent 框架的价值，不是替你“发明智能”，而是把模型调用、工具注册、状态管理、工作流编排、记忆、日志和调试封装成可复用结构。框架解决工程复杂度，但也会引入抽象成本。
+
+`07_Agent框架` 模块的重点，是理解不同框架背后的设计取舍：链式调用、图式状态机、开放式循环、多 Agent 角色协作、托管式 API，各自适合什么场景。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    A["Agent 需求"] --> B{"流程是否固定"}
+    B -- "固定" --> C["DAG / Pipeline<br/>LangGraph / 自研工作流"]
+    B -- "不固定" --> D["ReAct Loop<br/>动态工具调用"]
+    A --> E{"是否多角色协作"}
+    E -- "是" --> F["Multi-Agent<br/>CrewAI / AutoGen / GroupChat"]
+    E -- "否" --> G["Single Agent<br/>LangChain / Assistants / 自研"]
+    A --> H{"是否需要托管能力"}
+    H -- "是" --> I["托管 API<br/>线程、工具、文件、状态"]
+    H -- "否" --> J["开源/自研<br/>更高控制权"]
+`} />
+
+## 1. 框架不是 Agent 的本质
+
+很多学习路径会从框架开始：LangChain 怎么用，LangGraph 怎么画，CrewAI 怎么定义角色。这样容易把“框架 API”误当成“Agent 原理”。
+
+更合理的顺序是：先理解 ReAct、Planning、Tool Schema、Memory、State、Evaluation，再看框架如何表达这些概念。
+
+框架通常帮你做这些事：
+
+| 能力 | 说明 |
+| --- | --- |
+| 模型封装 | 屏蔽不同模型提供商接口差异 |
+| 工具注册 | 统一工具描述和调用 |
+| 链路编排 | Chain、DAG、循环、条件分支 |
+| 状态管理 | 在节点间传递任务状态 |
+| 记忆集成 | 对接短期/长期记忆 |
+| 可观测性 | trace、callback、日志 |
+| 部署集成 | API、任务队列、托管运行时 |
+
+但框架不会自动替你解决任务边界、工具权限、评估集、成本控制和安全策略。
+
+## 2. LangChain：组件拼装思路
+
+LangChain 的核心价值是组件丰富：模型、Prompt、Retriever、Tool、Agent、Memory、Output Parser 等都有标准接口。它适合快速搭建 LLM 应用原型，尤其是 RAG、工具调用和简单 Agent。
+
+它的风险是抽象层较多。小项目里很方便，复杂项目里如果不了解底层控制流，调试会比较痛苦。尤其是 Agent 循环出错时，需要知道每一步到底构造了什么 prompt、调用了什么工具、返回了什么 observation。
+
+## 3. LangGraph：把 Agent 变成状态机图
+
+LangGraph 的核心思想是用图表达 Agent 工作流。节点处理状态，边表达流转，条件边表达路由，循环边表达迭代。
+
+这对生产系统很有价值，因为 Agent 的执行过程变得可见：
+
+| 概念 | Agent 中的意义 |
+| --- | --- |
+| Node | 一个确定步骤，例如检索、规划、执行、验证 |
+| Edge | 步骤之间的固定流转 |
+| Conditional Edge | 根据状态决定下一步 |
+| State | 跨节点共享的任务数据 |
+| Checkpoint | 支持恢复、回放和调试 |
+
+LangGraph 特别适合混合式 Agent：外层是可控 DAG，局部节点里允许 ReAct 或重试循环。
+
+## 4. AutoGPT 与开放式循环
+
+AutoGPT 代表一种早期自主 Agent 思路：给目标，模型自己规划、执行、反思、继续。它展示了 Agent 的想象力，也暴露了开放循环的问题：目标漂移、成本失控、工具误用、难以调试。
+
+它的启发在于：Agent 可以围绕目标持续行动。但生产实现不能照搬完全开放的循环。必须加状态机、预算、权限、终止条件和评估器。
+
+## 5. ReAct Agent
+
+ReAct Agent 是最基础也最重要的模式。每一轮：
+
+1. 模型读取目标、历史和工具列表。
+2. 决定是否调用工具。
+3. 系统执行工具并返回 observation。
+4. 模型基于 observation 继续。
+
+ReAct 适合短任务和强交互任务。它的缺点是缺少全局计划，可能绕路。复杂任务通常会把 ReAct 放在某个执行节点里，由外层 Planner 或 DAG 控制大方向。
+
+## 6. CrewAI 与角色协作
+
+CrewAI 这类框架强调角色、任务和协作。它适合把复杂任务拆成多个专业角色，例如 Researcher、Writer、Reviewer、Planner。
+
+角色协作的价值在于分工，但要警惕“角色扮演过度”。如果任务没有真实分工，只是把一个 Agent 拆成三个人互相聊天，通常会增加成本和不确定性。
+
+多 Agent 框架应重点关注：
+
+| 问题 | 为什么重要 |
+| --- | --- |
+| 任务边界 | 每个 Agent 负责什么 |
+| 通信协议 | 输出如何被下游消费 |
+| 共享状态 | 信息写在哪里 |
+| 冲突解决 | 多个结论不一致怎么办 |
+| 终止条件 | 协作何时结束 |
+
+## 7. 托管式 Agent API
+
+托管式 API 通常提供线程、消息、文件、工具、状态和运行管理。它的优点是上手快、运维少、平台能力集成好。缺点是控制权和可移植性有限，某些底层策略不一定可定制。
+
+选择托管还是自建，本质是控制权和效率的取舍：
+
+| 选择 | 优点 | 缺点 |
+| --- | --- | --- |
+| 托管 API | 快速上线、少运维、能力集成 | 黑盒、定制受限、平台绑定 |
+| 开源框架 | 灵活、生态丰富、可控 | 需要自己治理和部署 |
+| 自研 | 完全贴合业务、可深度优化 | 成本高、容易重复造轮子 |
+
+## 8. DAG 与循环流
+
+工作流拓扑有两个基本模式：DAG 和循环流。DAG 可预测，循环流灵活。
+
+| 场景 | 推荐 |
+| --- | --- |
+| 流程固定、SLA 明确 | DAG |
+| 需要迭代优化 | 循环流 |
+| 搜索不足需要重试 | DAG 节点内部小循环 |
+| 开放式研究任务 | 循环流加预算和终止条件 |
+| 复杂生产流程 | 外层 DAG，局部循环 |
+
+工程上最常见的是混合方案。外层 DAG 保证可观测和成本边界，内部某些节点允许自适应重试。
+
+<Mermaid size="wide" diagram={`
+flowchart LR
+    A["输入"] --> B["固定预处理"]
+    B --> C["检索节点<br/>内部可重试"]
+    C --> D["分析节点<br/>ReAct 小循环"]
+    D --> E["验证节点"]
+    E --> F{"通过?"}
+    F -- "是" --> G["输出"]
+    F -- "否且未超预算" --> D
+    F -- "否且超预算" --> H["降级/人工介入"]
+`} />
+
+## 9. Agent Pipeline 与可观测性
+
+框架选型时，可观测性比“写起来优雅”更重要。Agent 失败常常不是代码异常，而是路径跑偏。没有 trace，就只能看最终答案猜原因。
+
+一个可观测框架至少要记录：
+
+| 信息 | 用途 |
+| --- | --- |
+| 每轮 LLM 输入输出 | 调试 prompt 和上下文 |
+| 工具调用参数和结果 | 定位工具误用 |
+| 状态变化 | 回放执行路径 |
+| token 和成本 | 控制预算 |
+| 节点耗时 | 找延迟瓶颈 |
+| 失败原因 | 反哺评估集 |
+
+## 10. 开源框架还是自研
+
+判断标准很简单：如果需求还在探索，用框架；如果流程稳定但需要深度控制，可以逐步抽象自己的 Harness；如果业务有强安全、强审计、强权限、多租户和高 SLA，核心控制层最好掌握在自己手里。
+
+不要在第一天自研完整框架，也不要在生产后期把关键控制权全部交给黑盒抽象。理想路径是：用开源快速验证，沉淀稳定接口，再把最关键的执行控制、状态、权限、评估和观测逐步收敛到自有架构里。
+
+## 11. 这个模块的工程结论
+
+Agent 框架选型要回到任务结构：
+
+1. 先理解 Agent 原理，再学习框架 API。
+2. 原型阶段优先框架，生产阶段关注控制权。
+3. DAG 适合可预测流程，循环适合开放迭代。
+4. 多 Agent 只有在真实分工存在时才值得用。
+5. 可观测性是框架核心能力，不是锦上添花。
+6. 框架帮你组织复杂度，但不会替你做评估、安全和成本治理。
+
+框架最好的状态，是让 Agent 的控制流更清楚，而不是让问题藏进抽象里。
+
+## 12. 外部资料补强：框架的本质是控制流表达
+
+LangGraph 官方文档把 agent 定义为由 LLM 控制应用控制流的系统，并提供 state、node、edge、checkpoint、human-in-the-loop 等机制。这个设计非常贴近生产 Agent：不是让模型在黑盒循环里乱跑，而是把模型决策放进图和状态机中管理。
+
+LangChain v1 的 agents 文档也说明，其 agent 构建在 LangGraph 之上，以获得 durable execution、streaming、human-in-the-loop、persistence 等能力。这说明主流框架正在从“链式 prompt 调用”转向“可恢复、可观测、可中断的运行时”。
+
+CrewAI 官方文档强调 crews、agents、tasks、processes 的组合。它适合角色和任务边界清晰的协作式场景。使用时要注意：角色框架能降低多 Agent 组织成本，但不能替代任务拆解和评估。角色越多，越需要明确交付物和全局预算。
+
+Anthropic 的 agent 构建建议把 workflow 和 agent 区分开，并推荐先从最简单模式开始。这个建议非常实用：框架选型不应该从“最智能”开始，而应该从“最可控且足够完成任务”开始。
+
+## 参考资料
+
+- [LangGraph Documentation](https://docs.langchain.com/oss/python/langgraph/overview)
+- [LangChain Agents Documentation](https://docs.langchain.com/oss/python/langchain/agents)
+- [CrewAI Documentation](https://docs.crewai.com/)
+- [Building Effective AI Agents, Anthropic](https://www.anthropic.com/research/building-effective-agents)

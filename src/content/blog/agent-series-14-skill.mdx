@@ -1,0 +1,255 @@
+---
+title: "Agent 知识体系 14：Skill，把 Agent 能力封装成可复用模块"
+date: '2025-10-30T12:00:00.000Z'
+tags:
+  - Agent
+  - Skill
+  - Codex
+categories:
+  - LLM
+  - Agent
+slug: 2025/10/30/agent-series-14-skill
+excerpt: 深入整理 Agent Skill：Skill 与 Prompt、System Prompt、Tool、MCP 的区别，SKILL.md 结构、name 和 description、progressive disclosure、元数据加载、resources/scripts/assets、边界划分、设计粒度、安全风险和生态意义。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+Skill 是 Agent 能力工程化的重要形态。它不是一段更长的 Prompt，也不是一个普通 Tool，而是把完成某类任务所需的方法、规则、资源、脚本和模板封装成可发现、可加载、可审计的能力包。
+
+`14_SKILL` 模块可以理解为“Agent 如何复用经验”。当系统 prompt 越来越长、任务类型越来越多、团队经验越来越分散时，Skill 提供了一种模块化组织方式。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    A["用户任务"] --> B["Skill Discovery<br/>name + description 匹配"]
+    B --> C{"是否触发 Skill"}
+    C -- "否" --> D["普通 Agent 流程"]
+    C -- "是" --> E["加载 SKILL.md<br/>主说明"]
+    E --> F{"需要更多资源吗"}
+    F -- "references" --> G["读取参考资料"]
+    F -- "scripts" --> H["运行/复用脚本"]
+    F -- "assets" --> I["使用模板/素材"]
+    G --> J["执行任务"]
+    H --> J
+    I --> J
+    E --> J
+    J --> K["产物与评估"]
+`} />
+
+## 1. Skill 解决的问题
+
+传统 Agent 常把所有规则塞进 system prompt：怎么写文档、怎么审代码、怎么做表格、怎么生成图片、怎么处理某项目规范。这样会带来三个问题：
+
+| 问题 | 表现 |
+| --- | --- |
+| 上下文膨胀 | 无关规则长期占 token |
+| 指令干扰 | 不同任务规则互相污染 |
+| 经验难复用 | 团队方法散落在文档里 |
+
+Skill 的思路是按需加载。只有当任务匹配某类能力时，相关说明和资源才进入上下文。
+
+## 2. Skill 与 Prompt、Tool、MCP 的区别
+
+| 概念 | 本质 | 解决什么 |
+| --- | --- | --- |
+| Prompt | 一次性或系统级指令 | 当前模型行为 |
+| System Prompt | 全局规则和安全边界 | 不变量 |
+| Tool | 可调用外部能力 | 执行动作 |
+| MCP | 工具和资源连接协议 | 标准化接入 |
+| Skill | 任务级方法和资源包 | 可复用工作流 |
+
+Skill 可以指导模型如何使用 Tool，也可以引用 MCP 暴露的资源，还可以补充 Prompt 中不适合长期存在的任务规则。
+
+一句话：Tool 告诉 Agent 能做什么，Skill 告诉 Agent 遇到一类任务该怎么做。
+
+## 3. 为什么是目录 + SKILL.md
+
+Skill 通常采用目录结构：
+
+```text
+my-skill/
+  SKILL.md
+  references/
+  scripts/
+  assets/
+```
+
+这种结构像轻量软件包。`SKILL.md` 是入口，描述什么时候用、怎么做；`references` 放较长说明；`scripts` 放可执行辅助脚本；`assets` 放模板、图片、示例文件。
+
+这种组织方式有几个好处：
+
+1. 元数据可索引。
+2. 主说明可快速加载。
+3. 大资源延迟加载。
+4. 脚本和模板可复用。
+5. 便于版本管理和审计。
+
+## 4. name 与 description
+
+`name` 是稳定标识，`description` 是触发语义。很多 Skill 触发效果不好，不是内容写得差，而是 description 没写清楚“什么时候用”。
+
+好的 description 应该：
+
+1. 说明任务类型。
+2. 说明适用场景。
+3. 包含用户可能使用的关键词。
+4. 避免过宽泛。
+5. 必要时说明不适用场景。
+
+例如“帮助写文档”太泛；“用于从本地代码仓库证据生成 CodeWiki 风格的架构文档，包含扫描、引用、页面组织和一致性检查”就清楚得多。
+
+## 5. Progressive Disclosure
+
+Progressive disclosure 是 Skill 的关键思想：先暴露少量元数据用于发现；匹配后加载主说明；只有需要时再读 references、scripts 或 assets。
+
+这样做解决上下文成本问题。一个 Skill 可以有很完整的资料，但 Agent 不必一开始全部读入。
+
+加载层次可以这样理解：
+
+| 层级 | 何时进入上下文 |
+| --- | --- |
+| 元数据 | Skill 发现阶段 |
+| SKILL.md 主说明 | Skill 被选中后 |
+| references | 任务需要具体细节时 |
+| scripts | 需要自动化或精确处理时 |
+| assets | 需要模板或素材时 |
+
+## 6. references、scripts、assets 怎么放
+
+| 目录 | 适合内容 |
+| --- | --- |
+| references | 长文档、规范、rubric、领域知识 |
+| scripts | 解析、转换、验证、生成脚本 |
+| assets | 模板、示例、图片、样式、种子文件 |
+
+判断标准是：如果内容是人类可读的方法论，放 references；如果内容需要精确执行，放 scripts；如果是产物素材，放 assets。
+
+不要把所有内容都塞进 SKILL.md。主说明应该短而清晰，负责导航和流程。
+
+## 7. Skill 与长期记忆、项目规范、用户偏好
+
+边界很重要：
+
+| 类型 | 保存什么 |
+| --- | --- |
+| Skill | 完成一类任务的方法 |
+| 长期记忆 | 用户偏好、历史经验 |
+| 项目规范 | 当前项目的约定 |
+| System Prompt | 全局安全和行为边界 |
+
+例如“写技术博客时要包含 Mermaid 图”可以是 Skill 方法；“用户喜欢中文长文”是用户偏好；“这个 Astro 项目的 frontmatter 必须包含 slug”是项目规范。
+
+混在一起会导致 Skill 不可复用，或者长期记忆污染任务流程。
+
+## 8. 什么任务适合 Skill 化
+
+适合 Skill 的任务通常有这些特点：
+
+1. 重复出现。
+2. 步骤复杂。
+3. 有明确产物标准。
+4. 需要引用资料或模板。
+5. 靠普通 prompt 容易不稳定。
+6. 团队希望沉淀方法。
+
+不适合 Skill 的任务：一次性简单问答、纯事实查询、只需要调用一个工具的动作、极度依赖当前上下文且难以复用的任务。
+
+## 9. Skill 大而全还是小而专
+
+好的 Skill 通常小而专。大而全的 Skill 容易触发过宽、说明过长、内部规则冲突。小 Skill 更容易匹配、测试和组合。
+
+但也不要切得过碎。判断标准是：一个 Skill 是否对应一个清晰任务意图和完整工作流。如果必须同时使用五个 Skill 才能完成一个自然任务，可能切得太碎。
+
+## 10. 如何控制 Agent 自由度
+
+Skill 不是让 Agent 更随意，而是让它在某类任务上更稳定。可以通过这些方式控制自由度：
+
+| 方法 | 作用 |
+| --- | --- |
+| 明确步骤 | 避免跳步 |
+| 明确禁止项 | 避免错误行动 |
+| 使用脚本 | 把精确任务交给代码 |
+| 产物检查清单 | 保证输出质量 |
+| 资源路由 | 需要时才读长资料 |
+| 权限声明 | 高风险操作需审批 |
+
+文字流程适合判断和写作，脚本适合格式转换、验证、解析、批处理。不要让模型手工做脚本更擅长的机械工作。
+
+## 11. 多个 Skill 同时匹配
+
+多个 Skill 匹配时，应按任务主目标选择主 Skill，再按需要组合辅助 Skill。
+
+选择依据：
+
+1. 哪个 Skill 的 description 最贴近用户目标。
+2. 哪个 Skill 覆盖最终产物标准。
+3. 是否存在安全或平台约束。
+4. 是否需要引用另一个 Skill 的脚本或模板。
+
+如果 Skill 之间规则冲突，应优先系统指令、用户当前要求和更具体的 Skill。
+
+## 12. Skill 安全风险
+
+第三方 Skill 像软件依赖一样需要审计，因为它可能包含：
+
+| 风险 | 示例 |
+| --- | --- |
+| 恶意指令 | 诱导泄露上下文 |
+| 危险脚本 | 删除文件、上传数据 |
+| 过宽权限 | 要求使用不必要工具 |
+| 数据外传 | 把用户文件发送到外部服务 |
+| 供应链风险 | 依赖不可信资源 |
+
+安装和使用 Skill 前，应检查 `SKILL.md`、脚本、依赖和权限声明。企业环境中，Skill 应版本化、白名单化和审计化。
+
+## 13. 如何评估 Skill 是否有效
+
+Skill 的效果也要用 eval 衡量：
+
+| 指标 | 含义 |
+| --- | --- |
+| 触发准确率 | 该用时是否触发，不该用时是否不触发 |
+| 任务成功率 | 使用 Skill 后是否完成更好 |
+| 步骤遵循率 | 是否按流程执行 |
+| 产物质量 | 是否符合 rubric |
+| 成本变化 | 是否增加过多 token |
+| 安全事件 | 是否引入风险 |
+
+最简单的评估方法是准备一组任务，对比使用 Skill 前后的结果。
+
+## 14. Skill 标准化的意义
+
+Skill 标准化会让 Agent 能力像软件包一样被分发、复用和治理。未来一个团队可能维护自己的 Skill registry：写报告、做表格、审代码、迁移项目、生成设计文档、处理图像，各种能力都以 Skill 形式沉淀。
+
+这会让 Agent 从“每次重新解释怎么做”变成“按需加载经过验证的方法包”。
+
+## 15. 这个模块的工程结论
+
+Skill 是 Agent 能力复用的关键抽象：
+
+1. Skill 不是长 prompt，而是任务级方法包。
+2. description 决定触发质量，要写清适用场景。
+3. progressive disclosure 让上下文按需加载。
+4. references、scripts、assets 各司其职。
+5. Skill 要小而专，但能覆盖完整工作流。
+6. 第三方 Skill 要像依赖一样审计。
+7. Skill 效果要通过触发率和任务成功率评估。
+
+当 Skill 设计得好，Agent 就不再每次从零开始学习任务，而是带着一套可复用的工作方法进入现场。
+
+## 16. 外部资料补强：Skill 已经从产品功能变成开放能力格式
+
+Anthropic 的 Agent Skills 工程文章把 Skill 描述为一个目录，其中 `SKILL.md` 必须包含 YAML frontmatter，至少有 `name` 和 `description`。它还明确提出 progressive disclosure：启动时只加载 name 和 description；任务匹配后再加载完整 `SKILL.md`；更长的参考文件按需继续读取。这正是 Skill 能缓解上下文膨胀的关键。
+
+Claude Code 的 Skills 文档强调，当你反复粘贴同一套说明、清单或多步骤流程时，就应该创建 Skill。这给了一个非常实用的判断标准：Skill 不是为了所有任务而建，而是为重复、复杂、可沉淀的流程而建。
+
+OpenAI Codex Skills 文档也采用相似结构：技能是目录，包含 `SKILL.md` 和可选 scripts、references、assets；Codex 先通过 name、description 和路径发现技能，选中后才读取完整说明。两家主流 Agent 产品都采用这种模式，说明 Skill 的核心不绑定某个厂商，而是一个自然出现的上下文管理和能力复用抽象。
+
+Codex 最佳实践还提醒：Skill 要保持一个清晰工作，description 要说明它做什么、什么时候用，并尽量包含用户真实触发语。这个建议非常关键，因为 description 不是普通简介，而是隐式路由规则。
+
+## 参考资料
+
+- [Equipping Agents for the Real World with Agent Skills, Anthropic](https://www.anthropic.com/engineering/equipping-agents-for-the-real-world-with-agent-skills)
+- [Claude Code Skills Documentation](https://docs.anthropic.com/en/docs/claude-code/skills)
+- [Agent Skills – Codex](https://developers.openai.com/codex/skills)
+- [Codex Best Practices: Turn Repeatable Work into Skills](https://developers.openai.com/codex/learn/best-practices)
+- [Agent Skills Specification](https://agentskills.io/specification)

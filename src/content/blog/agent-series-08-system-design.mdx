@@ -1,0 +1,222 @@
+---
+title: "Agent 知识体系 08：系统设计，企业级 Agent 如何稳定运行"
+date: '2025-03-25T12:00:00.000Z'
+tags:
+  - Agent
+  - System Design
+  - Reliability
+categories:
+  - LLM
+  - Agent
+slug: 2025/03/25/agent-series-08-system-design
+excerpt: 系统整理企业级 Agent 系统设计：API 层、编排层、Agent 层、工具层、存储层、高并发、并发控制、延迟优化、Token 成本、缓存、日志、A/B 测试、高可用、降级与多模型 fallback。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+企业级 Agent 和 Demo 的区别，不在于能不能跑通一个例子，而在于能不能 7×24 稳定运行，出了问题能定位，成本能算清，数据不能串，服务还能优雅降级。
+
+`08_系统设计` 模块把 Agent 从算法和框架拉回生产系统：请求怎么进来，任务怎么排队，状态怎么存，工具怎么治理，日志怎么追，成本怎么控，模型挂了怎么办。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    U["Client / 用户"] --> API["API Gateway<br/>认证、限流、trace_id"]
+    API --> V["输入验证<br/>安全过滤、长度限制"]
+    V --> Q["任务队列<br/>同步/异步分流"]
+    Q --> W["Workflow Orchestrator<br/>DAG / 状态机"]
+    W --> A["Agent Runtime<br/>Planner / Executor"]
+    A --> T["Tool Layer<br/>Registry、权限、重试"]
+    A --> R["RAG / Memory"]
+    A --> M["Model Router<br/>多模型、fallback"]
+    T --> S["外部系统<br/>DB / API / 文件 / 沙箱"]
+    A --> ST["State Store<br/>Redis / PostgreSQL"]
+    A --> O["Observability<br/>Log / Metric / Trace"]
+    A --> OUT["输出验证与返回"]
+    OUT --> U
+`} />
+
+## 1. 企业级 Agent 的设计目标
+
+企业级系统优先级很明确：可靠性和可维护性排在功能炫酷前面。
+
+可以用四句话概括：
+
+1. 跑得起来：高可用、自动恢复、降级。
+2. 看得清楚：日志、指标、trace。
+3. 算得明白：token、成本、延迟、quota。
+4. 管得住：权限、隔离、审计、安全策略。
+
+如果一个 Agent 功能很强，但无法解释为什么失败、无法限制成本、无法隔离用户数据，它就还不是生产系统。
+
+## 2. 五层架构
+
+企业级 Agent 通常可以分五层：
+
+| 层级 | 职责 |
+| --- | --- |
+| API 层 | 认证、授权、限流、请求日志、任务入口 |
+| 编排层 | 工作流、状态机、多 Agent 协调 |
+| Agent 层 | Planner、Executor、Memory、ReAct Loop |
+| 工具层 | Tool Registry、权限、执行、重试、结果校验 |
+| 存储层 | 状态、日志、缓存、记忆、任务历史 |
+
+分层不是为了画架构图好看，而是为了独立扩展和故障隔离。API 层扩容不应影响工具实现；工具层新增能力不应改 Agent 核心；状态存储升级不应重写业务逻辑。
+
+## 3. 同步还是异步
+
+Agent 任务经常耗时 5 到 60 秒。同步等待适合轻量问答，但复杂任务更适合异步：请求进来先返回 task_id，后台执行，前端通过 WebSocket、SSE 或轮询获取进度。
+
+| 模式 | 适用 |
+| --- | --- |
+| 同步 | 低延迟短任务、简单查询 |
+| 异步 | 长任务、报告生成、代码分析、多工具调用 |
+| 混合 | 先同步返回初步结果，后台继续完善 |
+
+异步设计还方便做任务队列、优先级、重试和削峰。
+
+## 4. 高并发与并发控制
+
+Agent 系统的瓶颈常常不在 CPU，而在 LLM API 限速、工具服务限速、向量库查询、数据库连接和沙箱资源。
+
+常见手段：
+
+| 手段 | 作用 |
+| --- | --- |
+| 队列削峰 | 避免突发流量打爆下游 |
+| Semaphore | 限制并发模型调用 |
+| 用户级 quota | 防止单用户耗尽资源 |
+| 工具级限流 | 保护外部 API |
+| 优先级调度 | 高价值任务优先执行 |
+| 超时控制 | 防止任务无限占用 worker |
+
+并发不是越高越好。LLM 服务 P99 延迟波动大，盲目提高并发会触发 rate limit，反而让整体吞吐下降。
+
+## 5. 降低延迟
+
+Agent 延迟来自多个环节：模型调用、检索、Rerank、工具 API、代码执行、重试、输出验证。优化要按 trace 找瓶颈。
+
+常见优化策略：
+
+| 策略 | 说明 |
+| --- | --- |
+| 并行工具调用 | 独立查询同时执行 |
+| 模型路由 | 简单任务走小模型 |
+| Prompt 压缩 | 减少上下文 token |
+| 检索缓存 | 相同查询复用结果 |
+| 流式输出 | 先让用户看到进度 |
+| 局部重试 | 不要整体重跑任务 |
+| 后台任务 | 长耗时步骤异步化 |
+
+不要只盯模型延迟。很多 Agent 慢，是因为工具串行、RAG 过宽、上下文太长、失败后整体重试。
+
+## 6. Token 成本控制
+
+Agent 比普通聊天更容易成本失控。它有多轮推理、工具结果、RAG context、反思和验证器。
+
+成本控制需要事前预算、事中监控、事后核算：
+
+| 阶段 | 动作 |
+| --- | --- |
+| 事前 | 根据任务类型估算 token 和成本上限 |
+| 事中 | 每轮累计 token，超过阈值停止或降级 |
+| 事后 | 记录实际消耗，按用户和任务聚合 |
+
+有效手段包括：模型路由、上下文摘要、工具结果截断、RAG final_k 控制、缓存、Batch API、max_steps、max_cost。
+
+## 7. 缓存策略
+
+Agent 缓存不能只看“输入字符串是否相同”。可以分多层：
+
+| 缓存 | 示例 |
+| --- | --- |
+| Embedding 缓存 | 同一文本不重复向量化 |
+| 检索缓存 | 相同 query 复用 Top-K |
+| 工具缓存 | 稳定 API 结果短期缓存 |
+| LLM 缓存 | 确定性低温任务可缓存 |
+| 计划缓存 | 高频任务模板复用 |
+
+缓存要注意权限和时效。用户 A 的检索结果不能给用户 B；实时数据不能缓存太久；带隐私的工具结果要加命名空间。
+
+## 8. 日志与 Trace
+
+没有 trace 的 Agent 很难调试。传统服务报错有堆栈，Agent 失败可能只是“第 5 步用了错误工具”，最终答案看起来还很流畅。
+
+日志应包含：
+
+| 字段 | 用途 |
+| --- | --- |
+| trace_id | 串起整个请求 |
+| user_id / tenant_id | 权限、配额、审计 |
+| task_type | 聚合分析 |
+| model/version | 复现行为 |
+| prompt_version | 回归分析 |
+| tool_calls | 定位误用 |
+| token_cost | 成本治理 |
+| latency_ms | 性能优化 |
+| final_status | 成功、失败、降级 |
+
+工具入参和出参要注意脱敏，不能为了可观测性泄露隐私。
+
+## 9. A/B 测试与灰度发布
+
+Agent 版本不只是代码版本，还包括 prompt、模型、工具描述、RAG 参数、rerank 模型和安全策略。上线必须灰度。
+
+A/B 测试可以比较：
+
+| 变量 | 指标 |
+| --- | --- |
+| Prompt 版本 | 任务成功率、格式错误率 |
+| 模型 | 质量、延迟、成本 |
+| RAG 参数 | 命中率、引用正确率 |
+| 工具 Schema | 调用准确率 |
+| Planner 策略 | 平均步数、失败率 |
+
+不要凭几个样例判断版本更好。Agent 行为是分布，必须用足够样本观察。
+
+## 10. 高可用、降级与 Fallback
+
+Agent 的下游依赖很多：模型 API、向量库、搜索服务、数据库、第三方 API、沙箱。任何一个挂了都可能影响任务。
+
+高可用策略包括：
+
+| 策略 | 示例 |
+| --- | --- |
+| 多副本 | Agent worker 多实例部署 |
+| 健康检查 | 自动摘除故障实例 |
+| 熔断器 | 下游连续失败后短期开路 |
+| 降级 | 返回缓存、简化答案、人工接管 |
+| 多模型 fallback | 主模型失败切备用模型 |
+| 超时隔离 | 单工具超时不拖垮全任务 |
+
+多模型 fallback 不是简单换模型。不同模型的工具调用格式、上下文长度、输出风格可能不同，需要适配层和回归测试。
+
+## 11. 这个模块的工程结论
+
+企业级 Agent 系统设计要围绕可靠性展开：
+
+1. 用分层架构隔离职责和故障。
+2. 长任务异步化，短任务同步化。
+3. 所有循环都有步数、时间、token、成本上限。
+4. 每个请求都有 trace_id，能回放执行路径。
+5. 成本控制是系统能力，不是财务事后统计。
+6. 模型、Prompt、RAG、工具都要灰度和 A/B。
+7. 下游失败必须有熔断、降级和 fallback。
+
+Agent 系统真正难的不是第一次跑通，而是第十万次请求仍然知道它为什么这样跑。
+
+## 12. 外部资料补强：生产化要借鉴成熟分布式系统经验
+
+OpenAI 的生产最佳实践强调 timeout、retry、exponential backoff、rate limit handling 和 streaming 等能力。对 Agent 来说，这些不是 API 小技巧，而是运行时稳定性的基础。一个多步 Agent 可能连续调用模型和工具，只要其中一个环节没有超时和重试策略，整条任务链就会被拖垮。
+
+OpenTelemetry 官方文档提供了统一的 trace、metric、log 观测模型。Agent 系统尤其适合用 distributed tracing，因为一次用户请求可能经过模型、RAG、工具、数据库、沙箱和外部 API。trace_id 必须贯穿所有子调用，否则失败时很难定位是哪一步跑偏。
+
+NIST AI Risk Management Framework 把 AI 风险治理拆成 Govern、Map、Measure、Manage。这个框架适合嵌入企业级 Agent 生命周期：Govern 对应治理和责任，Map 对应场景和风险识别，Measure 对应评估与监控，Manage 对应上线后的控制和响应。
+
+系统设计里还有一个容易忽视的点：LLM API 本身是外部依赖。它的 rate limit、P99 延迟、模型版本变化都会影响你的 SLA。因此多模型 fallback、请求队列、降级策略和成本告警不是高级优化，而是企业级 Agent 的基础设施。
+
+## 参考资料
+
+- [OpenAI Production Best Practices](https://platform.openai.com/docs/guides/production-best-practices)
+- [OpenTelemetry Documentation](https://opentelemetry.io/docs/)
+- [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework)
+- [OpenAI API Rate Limits Guide](https://platform.openai.com/docs/guides/rate-limits)

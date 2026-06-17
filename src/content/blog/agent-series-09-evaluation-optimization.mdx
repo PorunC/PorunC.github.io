@@ -1,0 +1,226 @@
+---
+title: "Agent 知识体系 09：评估与优化，用 Eval 驱动 Agent 迭代"
+date: '2023-10-10T12:00:00.000Z'
+tags:
+  - Agent
+  - Evaluation
+  - Optimization
+categories:
+  - LLM
+  - Agent
+slug: 2023/10/10/agent-series-09-evaluation-optimization
+excerpt: 深入整理 Agent 评估与优化：任务成功率、离线评估、在线评估、Benchmark、AgentBench、推理能力、工具使用、RAG 质量、幻觉检测、LLM-as-Judge、反馈闭环和持续学习。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+Agent 质量不能只靠“看起来回答不错”。同一个任务可能有多条正确路径，同一个模型在不同上下文里会有不同表现，最终答案正确也不代表推理路径可靠。Agent 需要一套 eval-driven 的开发方法。
+
+`09_评估与优化` 模块的核心，是把 Agent 从主观调 prompt 变成可测量、可回归、可持续优化的系统。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    A["真实任务样本"] --> B["离线评估集<br/>标注答案/工具路径/评分标准"]
+    B --> C["运行 Agent"]
+    C --> D["收集轨迹<br/>steps / tools / tokens / latency"]
+    D --> E["自动评估<br/>规则 + LLM-as-Judge"]
+    E --> F["人工抽检<br/>失败案例分析"]
+    F --> G["问题归因<br/>Prompt / Tool / RAG / Model / Workflow"]
+    G --> H["优化版本"]
+    H --> I["A/B 测试"]
+    I --> J["在线反馈"]
+    J --> A
+`} />
+
+## 1. Agent 评估为什么更难
+
+传统模型评估常常是输入输出匹配。Agent 是多步系统，中间会规划、检索、调用工具、重试、反思。最终答案只是结果，执行轨迹同样重要。
+
+Agent 评估至少要看四层：
+
+| 层级 | 关心什么 |
+| --- | --- |
+| 功能层 | 是否完成任务，是否调对工具 |
+| 能力层 | 推理、规划、知识整合是否可靠 |
+| 体验层 | 延迟、交互、容错是否可接受 |
+| 业务层 | 是否真正解决用户问题，是否带来价值 |
+
+只看最终回答，会漏掉很多隐患。例如 Agent 可能碰巧答对，但引用了错误来源；也可能答案不错，但用了 20 步完成一个 3 步任务。
+
+## 2. 核心指标体系
+
+Agent 指标应该是一个篮子，而不是单一准确率。
+
+| 指标 | 含义 |
+| --- | --- |
+| Task Success Rate | 任务成功完成比例 |
+| Tool Call Precision | 工具调用是否正确 |
+| Avg Steps to Complete | 平均完成步数 |
+| Error Recovery Rate | 工具或步骤失败后能否恢复 |
+| RAG Faithfulness | 答案是否被证据支持 |
+| Hallucination Rate | 无证据或事实错误比例 |
+| P95 Latency | 用户体验延迟 |
+| Cost per Task | 单任务成本 |
+| Human Escalation Rate | 需要人工介入比例 |
+
+指标之间会互相牵制。提高成功率可能增加成本，提高速度可能降低质量。因此优化要设置护栏：主指标提升时，延迟、成本、安全不能明显退化。
+
+## 3. 离线评估
+
+离线评估用固定测试集快速回归，适合开发阶段频繁迭代。一个好的 eval set 应该覆盖：
+
+1. 高频正常任务。
+2. 边界输入。
+3. 容易误调用工具的任务。
+4. RAG 证据不足的问题。
+5. 权限和安全相关问题。
+6. 历史线上失败案例。
+
+每个样本最好不仅有期望答案，还包含期望工具、允许路径、评分 rubrics、失败判定标准。
+
+离线评估的缺点是容易和真实流量脱节。所以线上失败案例要持续回流进离线集。
+
+## 4. 在线评估
+
+在线评估是真实考场。它可以收集显式反馈和隐式反馈。
+
+| 反馈 | 示例 |
+| --- | --- |
+| 显式 | 点赞、差评、用户评分、人工质检 |
+| 隐式 | 用户重新提问、复制率、编辑率、任务放弃、人工转接 |
+
+隐式反馈很有价值。用户不一定会点差评，但会用行为表达不满意：换一种问法、手动修改答案、重新执行任务。
+
+在线评估还需要分桶：不同用户、任务类型、模型版本、prompt 版本、工具版本分别统计，否则平均值会掩盖问题。
+
+## 5. Benchmark 与 AgentBench
+
+Benchmark 的价值是横向比较，但不能替代业务评估集。通用 Agent benchmark 可能覆盖网页操作、工具使用、推理、规划、代码执行等能力，但你的生产任务可能有完全不同的数据分布。
+
+使用 Benchmark 的正确姿势：
+
+1. 用它看模型和框架的大致能力边界。
+2. 不把分数直接当上线依据。
+3. 结合业务样本做定制评估。
+4. 把 benchmark 中暴露的问题转成内部测试用例。
+
+## 6. 推理能力与工具能力分开评估
+
+Agent 失败时，需要归因。是模型没理解任务，还是工具没选对，还是工具结果不好，还是 RAG 没召回，还是最终生成越界？
+
+推理能力评估可以看：任务分解是否合理，依赖是否正确，是否识别约束，是否在失败后调整。
+
+工具能力评估可以看：
+
+| 指标 | 说明 |
+| --- | --- |
+| Tool Selection Accuracy | 工具名是否选对 |
+| Argument Accuracy | 参数是否正确 |
+| Tool Necessity | 是否不该调用却调用 |
+| Recovery | 调用失败后是否修正 |
+| Result Usefulness | 是否正确利用工具返回 |
+
+把这些拆开，才能知道该改 prompt、schema、模型还是工具实现。
+
+## 7. RAG 质量评估
+
+RAG 评估分检索和生成两段。
+
+| 阶段 | 指标 |
+| --- | --- |
+| 检索 | Recall@K、MRR、nDCG、命中文档比例 |
+| Rerank | 相关片段排名是否前移 |
+| 生成 | Faithfulness、Answer Relevance、Citation Accuracy |
+| 端到端 | 问题是否被正确回答 |
+
+很多 RAG 问题不是生成模型错，而是正确证据没进上下文。先看检索命中，再看答案忠实度。
+
+## 8. 幻觉检测
+
+Agent 幻觉要分类型检测：
+
+| 类型 | 检测方法 |
+| --- | --- |
+| 事实错误 | 与可信来源比对 |
+| 引用错误 | 答案声明是否被文档支持 |
+| 工具幻觉 | 是否调用不存在工具或编造结果 |
+| 状态幻觉 | 是否声称完成未完成步骤 |
+| 权限幻觉 | 是否承诺无法执行的操作 |
+
+对高风险答案，可以做 claim-level verification：把答案拆成多个声明，逐条检查证据支持。
+
+## 9. LLM-as-Judge
+
+LLM-as-Judge 用模型做评审，可以提高评估自动化程度。它适合开放式答案评分、摘要质量、引用支持度、任务完成度判断。
+
+但 judge 本身也会偏，需要控制：
+
+| 风险 | 缓解 |
+| --- | --- |
+| 偏向长答案 | rubric 明确长度不加分 |
+| 偏向某模型风格 | 混合人工抽检 |
+| 不稳定 | 低温、多 judge 或一致性检查 |
+| 被答案诱导 | 给证据和评分标准，不只看答案 |
+
+LLM-as-Judge 最好用于辅助评估，而不是唯一裁判。关键版本上线仍需要人工抽样。
+
+## 10. 优化方法
+
+优化 Agent 要先归因，再动手。
+
+| 问题 | 优化方向 |
+| --- | --- |
+| 工具选错 | 改 Schema、加负例、工具分组 |
+| 参数错误 | 加格式说明、enum、校验反馈 |
+| RAG 找不到 | Query rewrite、混合检索、调 chunk |
+| RAG 噪声大 | Rerank、阈值、final_k 控制 |
+| 步数太多 | 改 Planner、缓存、并行工具 |
+| 成本太高 | 模型路由、摘要、减少 context |
+| 幻觉高 | 引用约束、verifier、拒答策略 |
+| 延迟高 | 并行化、异步、流式输出 |
+
+不要一次改太多变量。Prompt、模型、RAG、工具 Schema 同时改，会无法判断到底哪个改动有效。
+
+## 11. 反馈闭环与持续学习
+
+持续优化的核心是把线上失败变成离线资产：
+
+1. 记录失败 trace。
+2. 人工标注根因。
+3. 加入回归评估集。
+4. 修改 prompt、工具、RAG 或 workflow。
+5. 跑离线评估。
+6. 小流量 A/B。
+7. 观察线上指标。
+
+这就是 Agent 的持续学习。它不一定意味着在线训练模型，更多时候是持续改进系统策略、工具和评估集。
+
+## 12. 这个模块的工程结论
+
+Agent 优化的核心不是“凭感觉调 prompt”，而是建立评估闭环：
+
+1. 同时看最终结果和执行轨迹。
+2. 用指标篮子避免过度优化单点。
+3. 离线 eval 用于快速回归，在线 eval 用于真实反馈。
+4. 把失败按 Prompt、Tool、RAG、Model、Workflow 归因。
+5. LLM-as-Judge 有用，但要有人工抽检。
+6. 线上失败必须回流进离线测试集。
+
+没有评估体系的 Agent 迭代，本质上是在凭手感移动一个概率系统。Eval 是把概率系统变成工程系统的抓手。
+
+## 13. 外部资料补强：Agent Eval 要同时评估结果和轨迹
+
+AgentBench 论文把 LLM 作为 Agent 放进多种交互环境中评估，例如操作系统、数据库、网页、游戏和知识图谱。这类 benchmark 的启发是：Agent 评估不能只评最终文本，还要评交互过程、任务完成度和环境反馈。
+
+MT-Bench/Chatbot Arena 的 LLM-as-Judge 研究说明，强模型可以在开放式回答评估上接近人类偏好判断，但也存在偏见和不稳定。因此 LLM-as-Judge 很适合做规模化初筛，却不应完全替代人工抽检，尤其在安全、法律、金融、医疗等高风险场景。
+
+G-Eval 使用明确评分维度和链式评估步骤来改善 NLG 评估一致性。放到 Agent 里，这提示我们 judge prompt 不能只写“请打分”，而要提供 rubric：任务是否完成、证据是否支持、工具是否正确、是否有安全问题、格式是否合规。
+
+RAGAS 则把 RAG 评估拆成 retrieval 和 generation 维度。对 Agent 来说，这种分解式评估非常重要。端到端失败时，要能判断是检索没命中、rerank 排错、上下文噪声大，还是生成阶段不忠实。
+
+## 参考资料
+
+- [AgentBench: Evaluating LLMs as Agents](https://arxiv.org/abs/2308.03688)
+- [Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685)
+- [G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment](https://arxiv.org/abs/2303.16634)
+- [RAGAS: Automated Evaluation of Retrieval Augmented Generation](https://arxiv.org/abs/2309.15217)

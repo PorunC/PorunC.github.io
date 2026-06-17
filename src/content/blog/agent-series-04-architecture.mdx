@@ -1,0 +1,212 @@
+---
+title: "Agent 知识体系 04：架构设计，Planning、Memory、Execution Loop 如何协同"
+date: '2023-04-21T12:00:00.000Z'
+tags:
+  - Agent
+  - Architecture
+  - Planning
+categories:
+  - LLM
+  - Agent
+slug: 2023/04/21/agent-series-04-architecture
+excerpt: 深入整理 Agent 架构设计：完整架构、规划机制、任务分解、决策、工具调用、执行循环、错误恢复、记忆、状态管理、反思、多 Agent 协作和垂直领域 Agent。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+Agent 架构设计关心的不是“怎么调一次模型”，而是“怎么让一个概率模型在多步任务中稳定运行”。这个模块把基础知识里的组件进一步展开，讨论 Planning、Decision、Execution、Memory、Feedback 之间如何形成可控的执行系统。
+
+一个完整 Agent 架构最重要的特征是：控制流不是完全写死的，但也不是完全放飞。系统给出状态、工具、约束和终止条件，LLM 在这个框架中做运行时决策。
+
+<Mermaid size="wide" diagram={`
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> PERCEPTION: 接收目标
+    PERCEPTION --> PLANNING: 构建上下文
+    PLANNING --> DECISION: 生成计划
+    DECISION --> EXECUTION: 选择动作
+    EXECUTION --> OBSERVATION: 执行工具
+    OBSERVATION --> REFLECTION: 评估结果
+    REFLECTION --> DECISION: 继续
+    REFLECTION --> PLANNING: 需要重规划
+    REFLECTION --> COMPLETED: 目标完成
+    REFLECTION --> FAILED: 不可恢复
+    COMPLETED --> [*]
+    FAILED --> [*]
+`} />
+
+## 1. 六模块架构
+
+完整 Agent 通常包含六个模块：感知、规划、决策、执行、记忆、反馈。
+
+| 模块 | 核心职责 | 常见实现 |
+| --- | --- | --- |
+| 感知 | 解析用户目标和环境信息 | 上下文拼装、文件解析、API 拉取 |
+| 规划 | 拆解目标和管理依赖 | ReAct、Plan-and-Execute、DAG |
+| 决策 | 选择下一步动作 | LLM 推理、Function Calling |
+| 执行 | 调用工具影响外部世界 | API、数据库、代码执行、文件系统 |
+| 记忆 | 保存上下文和经验 | Context、State Store、Vector DB |
+| 反馈 | 评估结果并调整 | Verifier、自评、错误分级 |
+
+这六个模块不是都要做成独立服务。小任务可以合并，复杂任务才拆开。架构设计的关键不是“模块越多越高级”，而是“每个模块是否解决了真实的不确定性”。
+
+## 2. Planning：从目标到步骤
+
+规划模块负责把用户目标变成可执行步骤。常见模式有三类：
+
+| 模式 | 特点 | 适用场景 |
+| --- | --- | --- |
+| ReAct | 边做边想，每步根据 Observation 决策 | 短任务、信息依赖强 |
+| Plan-and-Execute | 先生成整体计划，再逐步执行 | 中长任务、结构清楚 |
+| DAG Workflow | 预定义节点和条件边 | 流程稳定、可预测性要求高 |
+
+规划最容易出问题的是粒度。步骤太粗，执行时仍然需要二次规划；步骤太细，依赖关系复杂、成本上升。好的计划应该能被工具或子 Agent 直接执行，并且每一步都有可观察结果。
+
+## 3. 任务分解与依赖关系
+
+复杂目标不能只拆成列表。列表表达不了哪些步骤可并行，哪些步骤必须等待，哪些失败后可以跳过，哪些失败后必须重规划。更合理的结构是 DAG 或状态机。
+
+例如“写一份行业分析报告”可以拆成：明确范围、检索资料、筛选来源、提取观点、生成大纲、撰写正文、引用检查、事实核验、格式化输出。其中检索和来源筛选可以多路并行，但引用检查必须在正文之后。
+
+任务分解应该输出的不只是步骤名，还应包含：
+
+| 字段 | 作用 |
+| --- | --- |
+| step_id | 方便追踪和重试 |
+| objective | 子任务目标 |
+| dependencies | 前置依赖 |
+| tool_hint | 可能使用的工具 |
+| success_criteria | 判断完成的标准 |
+| fallback | 失败时策略 |
+
+这样计划才能被 Executor 稳定执行。
+
+## 4. Decision：选择工具、参数与下一步
+
+决策模块的核心是把当前状态映射成下一步行动。它通常由 LLM 完成，但需要工具 Schema、历史轨迹、任务计划和约束一起参与。
+
+决策质量受三件事影响最大：
+
+1. 当前上下文是否包含必要信息。
+2. 工具描述是否清楚地区分使用场景。
+3. 执行结果是否被结构化地反馈给模型。
+
+很多“模型不会用工具”的问题，本质是上下文和工具说明设计不好。工具名模糊、参数太多、返回值不可读，都会让模型做出错误决策。
+
+## 5. Execution Loop：Agent 的心跳
+
+执行循环是 Agent 架构的核心。它把模型决策、工具执行、状态更新、反馈判断串起来。
+
+一个稳健循环至少要有这些控制点：
+
+| 控制点 | 目的 |
+| --- | --- |
+| max_steps | 防止无限循环 |
+| max_tokens | 控制上下文和成本 |
+| max_cost | 防止异常任务烧钱 |
+| timeout | 防止长时间阻塞 |
+| retry_policy | 单步失败后有限重试 |
+| verifier | 判断是否真的完成 |
+| human_approval | 高风险操作前人工确认 |
+
+不要只相信模型输出 `Final Answer`。模型说完成，不代表任务真的完成。生产系统最好把 LLM 自判、外部验证器和硬上限结合起来。
+
+## 6. 错误恢复：重试、重规划与降级
+
+Agent 执行中的错误很常见：工具超时、参数校验失败、检索结果不足、API 限流、代码执行报错、模型输出格式错误。错误恢复要分层，而不是一失败就整体重来。
+
+| 错误级别 | 策略 |
+| --- | --- |
+| 单次工具失败 | 原参数重试或修正参数 |
+| 同工具多次失败 | 换备用工具或返回降级结果 |
+| 子任务路径错误 | 局部重规划 |
+| 总目标方向错误 | 整体重规划 |
+| 高风险或不可恢复 | 停止并请求人工介入 |
+
+局部重规划是重点。全局重规划成本高，也容易丢失已经完成的工作。好的 Agent 会保留成功步骤，只修补失败路径。
+
+## 7. Memory 与 State Management
+
+记忆和状态经常被混用，但它们不是一回事。
+
+| 概念 | 保存什么 | 生命周期 |
+| --- | --- | --- |
+| State | 当前任务的执行进度、变量、工具结果 | 任务内 |
+| Short-term Memory | 当前上下文窗口中的最近对话 | 会话内 |
+| Long-term Memory | 用户偏好、历史经验、知识片段 | 跨会话 |
+
+状态管理强调一致性和可恢复。记忆系统强调相关性和按需召回。把两者混在一起，会导致长期记忆里塞满临时变量，或者任务状态被向量检索随机召回。
+
+生产 Agent 应该把短期上下文、任务状态、长期记忆分开存储，再由 Harness 决定每轮注入哪些内容。
+
+## 8. Reflection：什么时候需要反思
+
+反思模块用于评估执行轨迹、总结失败原因、提取可复用经验。它不是每个任务都必须有，因为反思通常要额外调用模型，增加延迟和成本。
+
+适合加反思的任务有几个特征：
+
+| 场景 | 原因 |
+| --- | --- |
+| 长生命周期 Agent | 经验可跨任务复用 |
+| 高价值复杂任务 | 多花一次模型调用值得 |
+| 失败成本高 | 提前发现跑偏很重要 |
+| 多次重复任务 | 能从成功和失败轨迹中优化 |
+
+短任务可以不反思，但长任务最好至少有周期性检查：当前计划是否仍然有效，是否接近目标，是否需要换策略。
+
+## 9. 多 Agent 协作
+
+多 Agent 本质是把多个单 Agent 通过协调层组织起来。常见协作模式包括：
+
+| 模式 | 特点 |
+| --- | --- |
+| Orchestrator-Worker | 一个协调者分配任务，多个 Worker 执行 |
+| Debate | 多个 Agent 给出观点，再由裁判选择 |
+| Blackboard | 所有 Agent 读写共享工作区 |
+| Pipeline | 每个 Agent 负责固定阶段 |
+
+多 Agent 的难点不是“启动多个模型调用”，而是上下文隔离、任务边界、冲突解决、结果合并和可观测性。每个 Agent 都可能有自己的 ReAct 循环，协调层必须能追踪每条子轨迹。
+
+## 10. 垂直领域 Agent
+
+通用 Agent 追求广，垂直领域 Agent 追求稳。后者通常更容易落地，因为它可以收窄工具、知识库、输出格式和评价标准。
+
+设计垂直领域 Agent 时，优先明确：
+
+1. 目标场景是否高频且价值足够。
+2. 领域知识来自哪里，是否能检索和更新。
+3. 可用工具是否覆盖核心行动。
+4. 结果是否能被规则或专家评估。
+5. 失败时是否有降级或人工接管。
+
+领域越窄，Agent 越容易做到稳定。不要一开始就做“万能助理”，先做能稳定完成一个高价值流程的 Agent。
+
+## 11. 这个模块的工程结论
+
+Agent 架构设计的核心，是在概率决策和确定性控制之间找到平衡：
+
+1. 让 LLM 决定需要智能判断的部分。
+2. 让状态机、预算、权限和验证器控制系统边界。
+3. 用计划表达目标分解，用执行循环推进任务。
+4. 把状态、短期记忆、长期记忆分清楚。
+5. 用局部重规划和分级错误恢复降低成本。
+6. 多 Agent 只有在分工收益大于协调成本时才值得上。
+
+一个好的 Agent 架构，不是让模型更自由，而是让模型在正确的位置自由。
+
+## 12. 外部资料补强：Planning、Reflection 与可控复杂度
+
+Lilian Weng 的 Agent 综述把 Planning 拆成子目标分解和反思改进两个部分，这和本模块的 Planner、Executor、Reflection 三层结构正好对应。工程实践中，子目标分解解决“从哪里开始”，反思解决“是否跑偏”，状态机解决“允许怎么走”。三者缺一，Agent 很容易变成开放式循环。
+
+Reflexion 论文提出一种不更新模型权重的学习方式：Agent 从任务反馈中写出自然语言反思，并把反思保存在 episodic memory 里影响后续尝试。这个思想很适合工程系统：我们不一定要在线训练模型，但可以把失败原因、成功模式、工具使用经验写入可控记忆，再在类似任务中召回。
+
+Anthropic 的《Building Effective AI Agents》特别强调简单、透明和可组合。它把常见模式分成 prompt chaining、routing、parallelization、orchestrator-workers、evaluator-optimizer 等。这个分类对架构选型很实用：如果任务能用 prompt chaining 解决，就不要直接上多 Agent；如果只需要分类路由，就不要写开放式自主循环。
+
+Generative Agents 论文提供了长期运行架构的参考：观察、记忆、反思、计划共同形成 believable behavior。对业务 Agent 来说，最值得借鉴的是“反思不是每轮都做，而是在记忆积累到一定程度后生成更高层摘要”，这能避免长期记忆变成未经整理的日志堆。
+
+## 参考资料
+
+- [LLM Powered Autonomous Agents, Lilian Weng](https://lilianweng.github.io/posts/2023-06-23-agent/)
+- [Reflexion: Language Agents with Verbal Reinforcement Learning](https://arxiv.org/abs/2303.11366)
+- [Building Effective AI Agents, Anthropic](https://www.anthropic.com/research/building-effective-agents)
+- [Generative Agents: Interactive Simulacra of Human Behavior](https://arxiv.org/abs/2304.03442)

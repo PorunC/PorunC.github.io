@@ -1,0 +1,444 @@
+---
+title: "Loop Engineering，给 AI Agent 设计可验证的自我迭代循环"
+date: '2026-06-17T12:00:00.000Z'
+tags:
+  - Agent
+  - Loop Engineering
+  - Coding Agent
+  - Harness
+categories:
+  - LLM
+  - Agent
+slug: 2026/06/17/loop-engineering
+excerpt: 深入分析最近在 AI coding agents 圈子里走红的 Loop Engineering：它和 Prompt Engineering、Context Engineering、Agent Harness 的区别是什么，如何设计目标、上下文、执行、验证、停止条件、trace 与人类介入，让 Agent 从一次性提示变成可控的自我迭代系统。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+Loop Engineering 最近突然变成一个热词。Addy Osmani 的文章、Claude Code 相关讨论、AI Engineer 圈子的视频和博客都在重复同一个判断：你不应该只是在提示 coding agent，而应该设计会提示 agent 的循环。
+
+这句话听起来像又一个 AI 行业新名词。Prompt Engineering、Context Engineering、Harness Engineering 刚刚让人消化完，现在又来了 Loop Engineering。但如果把 buzzword 的泡沫刮掉，它背后其实有一个很朴素、也很重要的工程变化：
+
+过去，人是循环。我们写 prompt，读输出，复制错误，继续追问，让模型改。
+
+现在，系统开始接管循环。Agent 自己读文件、改代码、跑测试、看错误、继续修复，直到验证通过、预算耗尽或需要人类介入。
+
+Loop Engineering 研究的就是这件事：**如何设计、运行和改进让 Agent 自我迭代的反馈循环**。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    A["Goal<br/>明确目标和完成标准"] --> B["Discover<br/>收集上下文、文件、issue、日志"]
+    B --> C["Plan<br/>拆解步骤和风险"]
+    C --> D["Execute<br/>调用工具、编辑代码、运行命令"]
+    D --> E["Observe<br/>读取测试、lint、CI、用户反馈"]
+    E --> F["Verify<br/>独立验证是否完成"]
+    F --> G{"通过了吗"}
+    G -- "是" --> H["Stop<br/>产出总结、diff、证据"]
+    G -- "否，可修复" --> I["Diagnose<br/>归因失败"]
+    I --> C
+    G -- "否，不可修复/高风险" --> J["Escalate<br/>请求人类介入"]
+    A -.-> K["Budgets<br/>步数、时间、token、成本"]
+    K -.-> C
+    K -.-> D
+    K -.-> F
+    D -.-> L["Trace<br/>记录每一步"]
+    E -.-> L
+    F -.-> L
+`} />
+
+## 1. Loop Engineering 到底是什么
+
+Loop Engineering 是从“写更好的单次提示”转向“设计更好的反馈循环”。
+
+它不是一个全新的底层技术。ReAct、Agent Loop、Evaluator-Optimizer、LangGraph cycles、OpenAI Agents SDK 的 runner、Claude Code 的自动修复循环，本质上都已经在做类似事情。新的地方在于：随着 coding agents 越来越能独立跑工具，开发者的工作重心开始从手动提示，转向设计循环结构本身。
+
+可以用一句话定义：
+
+> Loop Engineering 是设计 Agent 如何发现任务、构造上下文、执行动作、观察反馈、验证结果、迭代修复、停止或升级给人的工程方法。
+
+它关心的不是“这一句 prompt 怎么写得更聪明”，而是：
+
+| 问题 | Loop Engineering 的关注点 |
+| --- | --- |
+| Agent 从哪里拿任务 | issue、CI、监控、队列、人工目标 |
+| 每轮看什么上下文 | 文件、日志、失败输出、计划、约束 |
+| 每轮能做什么 | 工具权限、命令白名单、编辑范围 |
+| 怎么知道做对了 | 测试、lint、类型检查、评审器、人工确认 |
+| 失败后怎么办 | 重试、换策略、回滚、缩小范围、升级 |
+| 什么时候停止 | 完成标准、预算上限、无进展检测 |
+| 如何复盘 | trace、diff、指标、失败标签 |
+
+这就是它比 Prompt Engineering 更系统的地方。Prompt 是循环里的一个节点，Loop 是整个运行系统。
+
+## 2. 它和 Prompt Engineering、Context Engineering、Harness 的区别
+
+这几个词经常被混在一起，但边界其实很清楚。
+
+| 概念 | 主要问题 | 典型产物 |
+| --- | --- | --- |
+| Prompt Engineering | 如何让模型按意图生成下一步 | Prompt 模板、示例、输出格式 |
+| Context Engineering | 每轮给模型看什么信息 | 上下文选择、压缩、检索、记忆 |
+| Harness | 如何把模型放进可控运行环境 | 工具、状态、权限、预算、trace |
+| Loop Engineering | 如何让 Agent 持续迭代直到完成或停止 | 反馈循环、验证器、停止条件、调度 |
+
+Loop Engineering 不替代前三者。它把前三者组织起来：
+
+1. Prompt 决定每轮模型如何思考和行动。
+2. Context 决定每轮模型能看到什么。
+3. Harness 决定工具、权限、状态和预算。
+4. Loop 决定这些步骤如何重复、验证和停止。
+
+所以，一个好 loop 不是“让模型一直干活”。它应该像一个小型自动化系统，有入口、有状态、有控制、有反馈、有退出。
+
+## 3. 为什么这个概念会在 coding agents 里先火
+
+软件工程天然适合 Loop Engineering，因为它有相对清楚的反馈信号：
+
+| 反馈信号 | Agent 能怎么用 |
+| --- | --- |
+| 单元测试失败 | 读取失败栈，定位修改点 |
+| Type check 失败 | 修复类型不匹配 |
+| Lint 失败 | 自动格式化或修复风格 |
+| CI 失败 | 拉取日志，重现问题 |
+| Git diff | 检查变更范围是否过大 |
+| Code review 评论 | 转成下一轮修复任务 |
+| Issue 描述 | 作为目标和验收标准 |
+
+传统聊天任务很难自动判断“好不好”。代码任务不同：测试能跑，类型能查，diff 能看，命令能返回状态码。这些都让 Agent 可以形成闭环。
+
+SWE-agent 论文也强调了类似思想：语言模型 Agent 在软件工程任务里不仅需要强模型，还需要合适的 Agent-Computer Interface。也就是说，Agent 能不能修好 bug，很大程度取决于它如何浏览仓库、编辑文件、运行测试、观察环境。Loop Engineering 正是把这些环境交互组织成可靠循环。
+
+## 4. 一个最小 Loop 的结构
+
+最小可用的 loop 不复杂：
+
+```text
+while not done and within_budget:
+    context = build_context(goal, state, latest_observation)
+    action = agent.decide(context)
+    observation = execute(action)
+    state = update_state(state, action, observation)
+    done = verify(goal, state, observation)
+```
+
+这个伪代码看起来简单，但每一行都藏着工程问题。
+
+`build_context` 要决定给模型看哪些文件、日志、历史步骤和约束。`agent.decide` 要产出可执行动作，而不是泛泛建议。`execute` 要受权限和沙箱控制。`update_state` 要记录轨迹。`verify` 不能只问同一个模型“你完成了吗”，最好有外部验证。
+
+真正有用的 loop，通常至少有六个组件：
+
+| 组件 | 作用 |
+| --- | --- |
+| Goal Contract | 明确目标、边界和完成标准 |
+| Context Builder | 每轮选择必要上下文 |
+| Action Executor | 执行工具、命令、编辑、API 调用 |
+| Verifier | 用测试、规则、模型或人验证 |
+| Stop Policy | 控制完成、失败、预算和无进展退出 |
+| Trace Store | 记录每一步，支持复盘和评估 |
+
+## 5. Goal Contract：目标要写成可验证合同
+
+Loop 最大的风险之一，是目标太含糊。目标含糊时，Agent 会不停地“看起来在努力”，但你很难判断它是否完成。
+
+差的目标：
+
+```text
+优化这个项目。
+```
+
+好的目标：
+
+```text
+修复 issue #184 中登录页提交后跳转错误的问题。
+验收标准：
+1. 复现失败 case。
+2. 修改范围限于 auth flow 相关文件。
+3. 新增或更新测试覆盖错误跳转。
+4. npm test -- auth 通过。
+5. 输出修改摘要和验证命令。
+```
+
+Goal Contract 应该包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| 任务目标 | 要完成什么 |
+| 非目标 | 不要顺手做什么 |
+| 允许范围 | 可以改哪些文件或系统 |
+| 验收标准 | 用什么判断完成 |
+| 风险等级 | 是否需要人工确认 |
+| 预算 | 最多几轮、多久、多少钱 |
+
+如果目标不可验证，loop 就会退化成无限聊天。
+
+## 6. Context Builder：每轮上下文不是越多越好
+
+Loop 每轮都会产生新信息：文件内容、命令输出、测试失败、diff、模型计划、历史错误。如果全部塞回 prompt，成本会迅速爆炸，模型注意力也会被噪声稀释。
+
+Context Builder 要做选择：
+
+| 信息 | 策略 |
+| --- | --- |
+| Goal Contract | 每轮保留 |
+| 当前计划 | 保留摘要和当前步骤 |
+| 最近失败输出 | 原文保留关键片段 |
+| 长日志 | 提取错误栈、文件路径、行号 |
+| 文件内容 | 只读相关文件和函数 |
+| 历史轨迹 | 摘要压缩 |
+| 约束和权限 | 每轮注入关键边界 |
+
+这就是 Context Engineering 和 Loop Engineering 的交汇点。Loop 没有好的上下文选择，就会越跑越糊。
+
+## 7. Verifier：不要让 worker 给自己打分
+
+Loop Engineering 最重要的设计点是 verifier。Agent 说“我完成了”不够。它需要外部证据。
+
+Verifier 可以有多种形式：
+
+| Verifier | 适用 |
+| --- | --- |
+| 单元测试 | 代码行为 |
+| 类型检查 | 类型安全 |
+| Lint / format | 风格和基本质量 |
+| Golden file | 输出一致性 |
+| HTTP smoke test | 服务是否可用 |
+| Eval set | LLM 任务质量 |
+| 另一个模型 | 开放式质量判断 |
+| 人类审批 | 高风险操作 |
+
+Anthropic 的 Evaluator-Optimizer workflow 也是这个思想：一个模型生成，一个模型评估并反馈，循环直到质量达标。OpenAI Agents SDK 文档也强调 tracing 和 eval loops：先用 trace 调试，再把失败转成评估循环。
+
+Verifier 的设计原则是：尽量用系统事实，不要只用主观判断。能跑测试就跑测试，能查状态码就查状态码，能比对 schema 就比对 schema。
+
+## 8. Stop Policy：会停的 loop 才是工程系统
+
+一个不会停止的 Agent 不是自主，是失控。
+
+Stop Policy 至少要包含：
+
+| 停止条件 | 作用 |
+| --- | --- |
+| success | 验证通过 |
+| max_steps | 防止无限迭代 |
+| max_time | 控制延迟和资源 |
+| max_cost | 防止 token 失控 |
+| no_progress | 连续几轮没有改善就停 |
+| repeated_failure | 同类错误反复出现就升级 |
+| risk_trigger | 高风险动作需要人类确认 |
+
+`no_progress` 很关键。很多 loop 会陷入“改一点、测失败、再改一点、还是失败”的消耗模式。系统要能识别：失败类型没有变化、测试通过数没有增加、diff 越来越大、模型在重复同一解释。这时应该停下来，请人接管或缩小目标。
+
+## 9. Trace：Loop 的调用栈
+
+Loop 一旦自动跑多轮，就必须有 trace。否则失败后你只看到一堆改动，不知道它为什么这么改。
+
+Trace 至少记录：
+
+| 字段 | 用途 |
+| --- | --- |
+| iteration | 第几轮 |
+| input_context_summary | 本轮模型看了什么 |
+| model_output | 模型计划和动作 |
+| tool_calls | 执行了哪些工具 |
+| observation | 工具结果、错误、测试输出 |
+| diff_summary | 改了什么 |
+| verifier_result | 验证是否通过 |
+| cost_latency | token、成本、耗时 |
+| stop_reason | 为什么继续或停止 |
+
+OpenAI Agents SDK 的 tracing 文档把 LLM generations、tool calls、handoffs、guardrails、自定义事件都纳入 trace。这对 Loop Engineering 是非常合适的默认模型：每个 loop iteration 都应该能被回放。
+
+## 10. Loop Pattern：几种常见循环
+
+### 10.1 Fix-Test Loop
+
+最常见的 coding loop：
+
+```text
+复现失败 → 修改代码 → 跑测试 → 读取失败 → 再修改
+```
+
+适合 bug fix、类型错误、lint 修复。关键是测试命令要具体，diff 范围要受控。
+
+### 10.2 Evaluator-Optimizer Loop
+
+一个生成器产出方案，另一个评估器给反馈：
+
+```text
+生成草稿 → 评估质量 → 给出修改建议 → 生成新版
+```
+
+适合文档、报告、代码 review、提示词优化。评估器必须有 rubric，否则只是另一个会说话的模型。
+
+### 10.3 Triage Loop
+
+定时扫描任务源：
+
+```text
+扫描 issue/CI/监控 → 分类优先级 → 分派任务 → 跟踪状态
+```
+
+适合维护型工程工作。风险是自动派发过多低价值任务，烧掉 token 和开发者注意力。
+
+### 10.4 Research Loop
+
+用于开放式调研：
+
+```text
+提出子问题 → 搜索/检索 → 提取证据 → 判断证据是否足够 → 继续或生成结论
+```
+
+适合 RAG、市场研究、技术调研。必须限制检索轮数和来源质量。
+
+### 10.5 Human-Gated Loop
+
+高风险动作前停住：
+
+```text
+计划 → 生成操作 diff → 人类确认 → 执行 → 验证
+```
+
+适合数据库写入、生产部署、发邮件、权限变更、删除文件。
+
+<Mermaid size="wide" diagram={`
+flowchart LR
+    A["Loop Patterns"] --> B["Fix-Test<br/>代码修复"]
+    A --> C["Evaluator-Optimizer<br/>质量迭代"]
+    A --> D["Triage<br/>定时发现任务"]
+    A --> E["Research<br/>证据收集"]
+    A --> F["Human-Gated<br/>高风险审批"]
+    B --> G["强 verifier"]
+    C --> G
+    D --> H["调度与优先级"]
+    E --> I["来源与证据"]
+    F --> J["审批与审计"]
+`} />
+
+## 11. Loop Engineering 和 LangGraph、Agents SDK 的关系
+
+LangGraph 适合表达 loop，因为它支持状态、条件边、循环、持久化、human-in-the-loop。你可以把每一轮设计成图上的节点：plan、act、verify、route。如果 verify 失败，条件边回到 plan；如果通过，走到 END；如果风险高，走到 human_review。
+
+OpenAI Agents SDK 则把 run、tools、guardrails、handoffs、sessions、tracing 组合成 Agent Runtime。它不一定要求你自己写 while loop，但它提供了 loop 运行需要的构件：流式运行、工具调用、guardrail 检查、trace、handoff。
+
+所以 Loop Engineering 不等于某个框架。它是框架之上的设计方法。你可以用 Bash、GitHub Actions、LangGraph、Agents SDK、Temporal、队列 worker 来实现 loop。关键不是技术栈，而是反馈结构。
+
+## 12. Loop 的失败模式
+
+Loop 越强，失败也越尖锐。
+
+| 失败模式 | 表现 | 防护 |
+| --- | --- | --- |
+| Token burn | 一直重试但没有进展 | max_cost、no_progress |
+| Goal drift | 越改越偏离目标 | Goal Contract、diff 审查 |
+| Over-editing | 为修一个 bug 改半个仓库 | 文件范围限制 |
+| Self-grading | Agent 自己宣布成功 | 外部 verifier |
+| Context rot | 上下文越来越乱 | 摘要、裁剪、状态结构化 |
+| Test gaming | 为通过测试写假实现 | 人类 review、额外测试 |
+| Unsafe action | 自动执行高风险操作 | human gate、权限策略 |
+| Trace blindness | 无法复盘 | 强制记录 trace |
+
+Loop Engineering 的成熟度，主要看这些失败模式有没有被系统性处理。
+
+## 13. 一个现实的代码修复 Loop 设计
+
+假设目标是自动修复 GitHub issue：
+
+```text
+输入：
+  issue 标题、描述、复现步骤、分支、允许修改范围
+
+Loop：
+  1. 读取 issue 和相关文件
+  2. 生成最小复现计划
+  3. 尝试运行相关测试
+  4. 生成修改计划
+  5. 修改代码
+  6. 运行指定测试
+  7. 如果失败，读取错误并归因
+  8. 如果连续 2 轮同类失败，停止并请求人类
+  9. 如果通过，运行更宽测试
+  10. 输出 diff、验证命令和风险说明
+
+停止：
+  测试通过，或 8 轮，或 30 分钟，或成本超过预算，或触发高风险文件
+```
+
+这个 loop 的关键不是模型多聪明，而是每一步都有证据和退出条件。
+
+## 14. 什么时候不要做 Loop
+
+Loop Engineering 很诱人，但不适合所有任务。
+
+不要做 loop 的场景：
+
+1. 任务一步就能完成。
+2. 没有可靠 verifier。
+3. 动作风险高但无法审批。
+4. 成本比人工还高。
+5. 上下文太敏感，不能交给自动系统。
+6. 失败后很难回滚。
+7. 目标本身还没定义清楚。
+
+很多时候，更好的方案是 workflow，而不是 agent loop。固定流程能解决的，不要用开放循环。
+
+## 15. Loop Engineering 的成熟度阶梯
+
+可以按五级推进：
+
+| 等级 | 特征 |
+| --- | --- |
+| L0 手动 prompting | 人类复制错误、继续提示 |
+| L1 单轮 agent | Agent 能调用工具，但人类决定下一步 |
+| L2 有限循环 | Agent 可重试，有 max_steps 和测试 |
+| L3 可观测循环 | 有 trace、预算、失败归因、回滚 |
+| L4 调度循环 | 定时发现任务，自动分派，人工审批高风险 |
+| L5 组织级循环 | 多 Agent、多队列、多 verifier、持续 eval |
+
+大多数团队不应该直接跳到 L5。先把 L2 做稳，比做一个无人值守的“AI 软件工厂”更实际。
+
+## 16. 和前面 Agent 系列的关系
+
+Loop Engineering 可以看作前面 Agent 知识体系的横切专题：
+
+| 前置模块 | 在 Loop 里的位置 |
+| --- | --- |
+| Prompt Engineering | 每轮 action prompt |
+| Context Engineering | 每轮 context builder |
+| Tool Use | execute 阶段 |
+| RAG | discover/research 阶段 |
+| Evaluation | verifier 和 eval loop |
+| Security | permission、sandbox、human gate |
+| Harness | loop 的运行控制层 |
+| Skill | loop 的可复用流程包 |
+
+它不是第 16 个孤立模块，而是把 Agent 运行时真正串起来的工程视角。
+
+## 17. 总结
+
+Loop Engineering 的核心不是“让 Agent 一直自动跑”，而是“让 Agent 在有目标、有上下文、有工具、有验证、有停止条件的系统里迭代”。
+
+好的 loop 有几个标志：
+
+1. 目标可验证。
+2. 每轮上下文有选择。
+3. 动作受权限控制。
+4. 验证器独立于执行者。
+5. 有明确停止条件。
+6. 有 trace 可复盘。
+7. 失败能升级给人。
+8. 成本和风险可控。
+
+如果 Prompt Engineering 是写好一句话，Context Engineering 是选好一轮信息，Harness Engineering 是搭好运行环境，那么 Loop Engineering 就是把这些东西组织成一个能自我修正、但不会失控的系统。
+
+这也是 coding agents 走向生产的关键一步：人不再亲自充当循环，但人必须设计循环。
+
+## 参考资料
+
+- [Loop Engineering, Addy Osmani](https://addyosmani.com/blog/loop-engineering/)
+- [What Is Loop Engineering? The New Meta for AI Coding Agents, MindStudio](https://www.mindstudio.ai/blog/what-is-loop-engineering-ai-coding-agents)
+- [Building Effective AI Agents, Anthropic](https://www.anthropic.com/research/building-effective-agents)
+- [Writing Effective Tools for AI Agents, Anthropic](https://www.anthropic.com/engineering/writing-tools-for-agents)
+- [LangGraph Overview](https://docs.langchain.com/oss/python/langgraph/overview)
+- [OpenAI Agents SDK: Running Agents](https://openai.github.io/openai-agents-python/running_agents/)
+- [OpenAI Agents SDK: Tracing](https://openai.github.io/openai-agents-python/tracing/)
+- [SWE-agent: Agent-Computer Interfaces Enable Automated Software Engineering](https://arxiv.org/abs/2405.15793)

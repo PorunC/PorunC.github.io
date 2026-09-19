@@ -1,0 +1,748 @@
+---
+title: "从 Excel 到数据中台：用一家水果店讲透数据架构与语义层"
+date: '2026-09-20T12:00:00.000Z'
+tags:
+  - Data Architecture
+  - Big Data
+  - Semantic Layer
+  - Data Platform
+categories:
+  - Data
+  - System Design
+slug: 2026/09/20/data-architecture-and-semantic-layer
+excerpt: 从一家水果店的订单出发，串起数据库、数据仓库、数据湖、湖仓一体、MapReduce、Spark、Flink、Airflow、HBase、Doris、数据中台，以及 OSI 和 Snowflake 语义层。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+数据库、数据仓库、数据湖、湖仓一体、数据中台、语义层，这些词经常一起出现，却很容易被误解成一张“把所有产品都堆上去”的架构图。
+
+更好的理解方式，是从一笔真实业务开始：一家线上水果店如何记录订单，如何回答“昨天卖了多少”，如何在用户点击商品时实时更新推荐，又如何让市场、财务和 AI 助手对“销售额”得到同一个答案。
+
+本文沿着一条数据变现链路展开：
+
+> 数据产生 → 数据接入 → 数据存储 → 数据计算 → 数据治理 → 语义统一 → 数据服务 → 业务动作
+
+文中的产品是常见的示例选型，不代表每家公司都要全部采用。架构升级的理由，应该来自规模、时效、成本、可靠性或复用问题，而不是产品名单本身。
+
+<Mermaid size="wide" diagram={`
+flowchart LR
+    SRC[订单、支付、库存、点击、日志、文件] --> INGEST[批量 ETL / CDC / 消息队列]
+    INGEST --> STORE[数据库、数仓、数据湖、湖仓]
+    STORE --> COMPUTE[Spark 批处理 / Flink 流处理]
+    COMPUTE --> GOVERN[Airflow 调度、质量、目录、权限、血缘]
+    GOVERN --> ASSET[指标、标签、特征、模型]
+    ASSET --> SEM[语义层\n统一业务概念与指标口径]
+    SEM --> SERVICE[SQL / API / AI 查询]
+    SERVICE --> APP[BI、推荐、营销、风控、决策]
+`} />
+
+## 1. 从 Excel 开始：先把交易记录下来
+
+最初的水果店每天只有几十笔订单。订单号、客户、商品、金额和收货地址放在 Excel 里，一行是一笔订单，一列是一个字段，求和、筛选和排序都很方便。
+
+当订单增长到每天 1,000 笔，问题就不再是“表格够不够大”：多人同时编辑会相互覆盖；库存可能被扣成负数；订单、支付和发货状态散落在不同工作表；文件损坏或误删后，也很难恢复一份可信的历史记录。
+
+这时需要的是一个专门管理数据的系统，而不是更大的表格。
+
+<Mermaid diagram={`
+flowchart LR
+    E[Excel\n几十单/天] -->|并发、备份、性能不足| DB[(业务数据库\nOLTP)]
+    DB -->|报表扫描影响下单| DW[(数据仓库\nOLAP)]
+    DW -->|TB/PB 与非结构化数据| LAKE[(数据湖\n低成本保存原始数据)]
+    LAKE -->|数据多但难找、难管| GOV[治理\n目录、质量、权限]
+    DW -. 统一表格式与计算 .-> LH[湖仓一体]
+    LH --> BIG[大数据\n存、算、管、用]
+    BIG --> MID[数据中台\n资产化、服务化]
+    MID --> APP[推荐、营销、BI、风控]
+`} />
+
+这里的箭头不是一条必须照抄的产品路线。小团队可能直接使用云数仓和托管对象存储；只有在数据量、实时性和复用需求继续增长时，才需要拆出更多组件。
+
+## 2. 数据库：让一笔交易正确发生
+
+### 2.1 OLTP 负责“现在发生什么”
+
+业务数据库按表组织数据。下单时插入订单，支付成功时更新状态，扣库存时更新库存行。事务、锁、索引、日志和备份让多人并发访问时仍然保持可靠性。
+
+这类工作负载称为 **OLTP（Online Transaction Processing，在线事务处理）**，特点是：
+
+| 特征 | 说明 |
+| --- | --- |
+| 访问对象 | 少量记录，常按主键或索引定位 |
+| 读写模式 | 高频插入、更新、短查询 |
+| 延迟要求 | 通常是毫秒到几十毫秒 |
+| 一致性要求 | 一笔事务内必须正确提交或回滚 |
+| 常见系统 | MySQL、PostgreSQL、Oracle |
+
+### 2.2 行式存储为什么适合下单
+
+关系型数据库通常采用行式存储：一笔订单的订单号、用户、金额、地址和状态放在一起。读取或更新整笔订单时，数据库只需要定位这一行附近的数据。
+
+```text
+订单 1001：订单号 | 用户 | 金额 | 地址 | 状态
+订单 1002：订单号 | 用户 | 金额 | 地址 | 状态
+订单 1003：订单号 | 用户 | 金额 | 地址 | 状态
+```
+
+行式存储并非“比列式高级”。它只是更匹配按记录读写的访问模式。问题在于，当每天要回答“过去三年的各地区销售额”时，查询会扫描大量行并进行分组聚合。
+
+### 2.3 交易和分析必须解耦
+
+订单量涨到每天 100,000 笔后，业务团队开始运行以下查询：
+
+```sql
+SELECT region, product_id, SUM(amount)
+FROM orders
+WHERE order_time >= CURRENT_DATE - INTERVAL '30' DAY
+GROUP BY region, product_id;
+```
+
+这类查询要扫描很多记录、读取多个字段并进行聚合，而下单请求需要快速写入少量记录。让两者共享一套资源，会出现一个典型故障：报表一跑，线上下单变慢。
+
+**第一个原则：在线交易和大规模分析要解耦。** 数据库管“现在发生的交易”，分析数据需要流向面向分析的系统。
+
+## 3. 数据仓库：把交易数据变成可分析的数据
+
+### 3.1 OLAP 负责“过去发生了什么”
+
+数据仓库是面向分析的独立系统，典型负载是 **OLAP（Online Analytical Processing，在线分析处理）**：读取大量历史数据，按时间、地区、商品和渠道过滤、分组、聚合。
+
+为了只读取需要的列，分析系统通常偏好列式存储。统计总销售额时，不必把地址、备注等无关字段全部读出来。
+
+| 对比项 | OLTP 业务数据库 | OLAP 数据仓库 |
+| --- | --- | --- |
+| 目标 | 低延迟完成交易 | 高吞吐完成分析 |
+| 操作 | 插入、更新、按主键查询 | 扫描、聚合、趋势分析 |
+| 存储倾向 | 行式 | 列式 |
+| 数据范围 | 当前业务数据 | 历史、多主题数据 |
+| 一致性重点 | 单笔事务强一致 | 批或流处理后的可追踪结果 |
+
+### 3.2 ETL 和 ELT：数据怎样进入数仓
+
+经典的 **ETL** 是 Extract、Transform、Load：抽取业务数据，统一日期、金额和编码，去重、补缺、处理异常，再把结果写入数仓。
+
+云平台常用 **ELT**：先把原始数据 Load 到低成本存储，再利用仓库计算能力 Transform。两者的核心目标相同，区别在于转换发生在数据进入目标系统之前还是之后。
+
+<Mermaid diagram={`
+flowchart LR
+    O[(订单库)] --> EX[Extract / CDC]
+    P[(支付库)] --> EX
+    G[(商品库)] --> EX
+    EX --> T1[标准化\n日期、金额、编码]
+    T1 --> T2[质量处理\n去重、补缺、异常校验]
+    T2 --> T3[业务关联\n订单 + 支付 + 商品 + 物流]
+    T3 --> L[Load / 建模]
+    L --> DWD[明细层\n一行一事实]
+    L --> DWS[汇总层\n按主题聚合]
+    L --> ADS[应用层\n报表与指标]
+`} />
+
+业务系统把订单、支付、商品和物流拆成多张规范化表，方便交易更新；分析人员却希望一次看到订单号、商品名、数量、金额和发货时间。因此数仓会建立销售主题宽表，减少每个报表重复关联的成本。
+
+数仓的边界也很清楚：它擅长结构化、稳定口径的分析，但通常需要先建模。暂时不知道用途的原始数据、图片、视频和语音，不适合全部按数仓表的方式管理。
+
+## 4. 数据湖：先把原始数据留下来
+
+水果店的 App 上线后，用户每次点击、停留、滑动、搜索都会产生事件；商品有图片和视频；客服有语音记录；服务器还有大量日志。数据从 GB 增长到 TB/PB，非结构化数据的比例也不断上升。
+
+数据湖采用 **Schema-on-read（读时模式）**：先以接近原貌的形式保存，需要使用时再解析和建模。对象存储的容量弹性和成本都比较适合这个场景，HDFS 则提供了分布式文件存储能力。
+
+<Mermaid diagram={`
+flowchart TB
+    DB[(业务数据库)] --> LAND[Landing 原始落地区]
+    EVENT[点击流 / 交易事件] --> LAND
+    FILE[图片 / 视频 / 音频] --> LAND
+    LOG[系统日志] --> LAND
+    LAND --> BRONZE[Bronze 原始层\n保留来源与事件时间]
+    BRONZE --> SILVER[Silver 明细层\n清洗、去重、标准化]
+    SILVER --> GOLD[Gold 主题层\n指标、标签、宽表]
+    BRONZE -. 可回放、可重算 .-> SILVER
+    SILVER -. 可复用 .-> GOLD
+`} />
+
+### 4.1 HDFS 的直观理解
+
+HDFS 可以理解为一块分布式“超级硬盘”：大文件切成数据块，分散到多台 DataNode；NameNode 保存“哪个文件的哪个数据块位于哪台机器”的目录；数据块保留多个副本，单台机器损坏后仍可恢复。
+
+<Mermaid diagram={`
+flowchart LR
+    C[客户端] --> N[NameNode\n文件与块位置索引]
+    C --> D1[DataNode 1\nBlock A / 副本]
+    C --> D2[DataNode 2\nBlock B / 副本]
+    C --> D3[DataNode 3\nBlock A / 副本]
+    D1 -. 复制 .-> D3
+    D2 -. 复制 .-> D1
+`} />
+
+云对象存储可以减少自建 HDFS 的运维，但数据湖仍然需要元数据、目录、质量、权限和生命周期管理。
+
+### 4.2 没有治理就会变成数据沼泽
+
+如果运营和市场都把日志命名为 `log1.txt`，半年后没人知道来源、字段含义和负责人；大家不敢删除过期数据，空间被垃圾占满，这就是 **数据沼泽（Data Swamp）**。
+
+数据湖至少要补齐：
+
+1. 元数据：字段含义、类型、来源和更新时间。
+2. 数据目录：搜索入口、负责人和使用说明。
+3. 质量规则：空值率、重复率、范围和波动校验。
+4. 权限审计：谁能看哪些数据，谁访问过敏感字段。
+5. 生命周期：冷热分层、归档、删除和成本控制。
+
+“什么都能存”只有在“之后还能找到、理解和复算”时才有价值。
+
+## 5. 湖仓一体：兼顾成本、灵活性和性能
+
+数仓规整、查询快，但不擅长保存所有原始数据；数据湖便宜、灵活，却需要额外治理和查询优化。湖仓一体的目标，是让湖和仓共享底层数据与元数据：原始数据统一入湖，清洗后的表具备事务、版本和 Schema 演进能力，计算引擎可以直接访问历史数据。
+
+<Mermaid diagram={`
+flowchart LR
+    INGEST[所有原始数据] --> LAKE[(统一数据湖)]
+    LAKE --> RULE{按访问频率与时效分层}
+    RULE -->|近实时 / 高频| HOT[(热层\n高性能查询)]
+    RULE -->|低频 / 历史| COLD[(冷层\n对象存储归档)]
+    HOT --> Q[统一 SQL / OLAP 查询]
+    COLD --> Q
+    Q --> RESULT[报表、特征、模型训练]
+`} />
+
+近三个月订单是热数据，适合高性能查询；三年前订单是冷数据，适合低成本归档。Delta Lake、Apache Iceberg 等表格式，为对象存储增加事务、版本、Schema 演进和时间旅行能力，让湖中的文件具备“表”的可靠性。
+
+## 6. 大数据的四个问题：存、算、管、用
+
+大数据不是某一个产品，而是一套处理海量、持续增长、多来源数据的技术体系。可以用四个问题来拆解：数据如何存，任务如何算，链路如何管，结果如何用。
+
+<Mermaid diagram={`
+flowchart TB
+    DATA[海量、多源、持续增长的数据] --> STORE[存\n分布式存储、湖仓、分层]
+    STORE --> COMPUTE[算\n批处理、流处理、机器学习]
+    COMPUTE --> GOVERN[管\n调度、质量、目录、权限、血缘]
+    GOVERN --> SERVE[用\n指标、标签、推荐、风控、BI]
+    SERVE --> FEEDBACK[业务结果与用户行为]
+    FEEDBACK --> DATA
+`} />
+
+### 6.1 MapReduce：把一次大计算拆开
+
+统计三年订单时，单台机器可能既装不下数据，也算不完数据。MapReduce 的基本思想是：先把输入切成分片，在多个 Worker 上并行执行 Map，再把中间结果按 Key 聚合到 Reduce。
+
+例如统计总销售额：每个 Worker 先计算自己负责分片的局部和，最后由 Reduce 汇总所有局部和。
+
+<Mermaid diagram={`
+flowchart LR
+    INPUT[(海量订单)] --> SPLIT[切分数据分片]
+    SPLIT --> M1[Worker 1\nMap：本地求和]
+    SPLIT --> M2[Worker 2\nMap：本地求和]
+    SPLIT --> M3[Worker 3\nMap：本地求和]
+    M1 --> REDUCE[Reduce：按 Key 汇总]
+    M2 --> REDUCE
+    M3 --> REDUCE
+    REDUCE --> OUT[总销售额]
+`} />
+
+MapReduce 的优点是模型简单、容错思路成熟，缺点是阶段之间经常落盘，迭代和交互式任务较慢。它适合大规模离线处理，但不适合秒级响应。
+
+### 6.2 Spark：面向批处理和迭代计算
+
+Spark 把计算组织成 DAG（有向无环图），尽量把中间结果保留在内存或更高效的执行引擎中，减少不必要的磁盘往返。因此它很适合：
+
+- 数仓批处理和宽表加工。
+- 交互式 SQL 分析。
+- 需要反复扫描数据的机器学习训练。
+- 对延迟要求低于实时流处理的离线任务。
+
+Spark 不是“MapReduce 的简单升级版”，它提供了更丰富的算子、SQL、机器学习和流处理能力；但任务本身仍要根据数据量、分区、Shuffle 和资源配置进行优化。
+
+### 6.3 Flink：事件到达就处理
+
+Flink 以持续运行的流为核心。事件一到达，系统就可以按事件时间、窗口和状态进行计算，适合实时销售额、用户画像、反欺诈和推荐特征。
+
+<Mermaid diagram={`
+flowchart TB
+    subgraph BATCH[批处理]
+        FILES[一批历史数据] --> SPARK[Spark] --> BOUT[小时级 / 日级结果]
+    end
+    subgraph STREAM[流处理]
+        EVENTS[连续事件流] --> FLINK[Flink] --> SOUT[秒级 / 分钟级结果]
+    end
+    BATCH -. 适合 .-> BR[销售日报、月度结算、模型训练]
+    STREAM -. 适合 .-> SR[实时大屏、推荐、风控]
+`} />
+
+| 维度 | MapReduce | Spark | Flink |
+| --- | --- | --- | --- |
+| 主要范式 | Map + Reduce 批处理 | DAG 批处理与交互式计算 | 流优先，也支持批处理 |
+| 中间结果 | 更常落盘 | 尽量内存化 | 持续维护状态 |
+| 延迟 | 高，通常离线 | 中，分钟到小时常见 | 低，秒级甚至更低 |
+| 典型任务 | 海量离线汇总 | ETL、SQL、训练 | 实时指标、画像、风控 |
+
+选型首先看延迟目标：日报可以等几个小时，反欺诈可能只能等几十毫秒。不要因为“流处理更先进”就把所有任务都改成 Flink。
+
+## 7. 两类常见存储引擎：HBase 与 Doris
+
+HBase 和 Doris 都能处理大数据，但解决的问题完全不同：HBase 偏向海量稀疏数据的按 Key 访问，Doris 偏向高性能的分析查询。
+
+### 7.1 HBase：海量数据的随机读写
+
+HBase 是构建在 HDFS 之上的分布式、列族式 NoSQL 数据库。它把表按 RowKey 划分为多个 Region，Region 再分布到 RegionServer。列按列族组织，同一行可以拥有不同的列，适合稀疏、字段变化多的数据。
+
+```text
+RowKey = user_id + reverse_timestamp
+
+row: u-1001|987654
+  profile:name       = 小林
+  behavior:last_item = apple-001
+  behavior:score     = 0.83
+```
+
+HBase 的关键设计点是 RowKey：
+
+- 读请求通常要能通过 RowKey 直接定位。
+- RowKey 设计不当会造成热点 Region。
+- HBase 擅长点查和范围扫描，不擅长临时多表 Join。
+- 列族应保持少量且稳定，不能把它当作无限扩展的“列名垃圾桶”。
+
+适合 HBase 的场景包括用户画像、设备状态、时间序列明细、消息历史和大规模 Key-Value 查询。它不适合作为交易数据库的替代品，也不适合作为复杂 BI 报表的首选引擎。
+
+### 7.2 Doris：面向分析的 MPP 数据库
+
+Doris 是面向 OLAP 的 MPP（Massively Parallel Processing，大规模并行处理）数据库。数据通常按列存储、压缩并分布在多个 BE 节点，FE 负责 SQL 解析、规划和元数据管理。查询会被拆成多个执行片段并行运行，再合并结果。
+
+<Mermaid diagram={`
+flowchart LR
+    Q[BI / SQL 查询] --> FE[FE\n解析、规划、元数据]
+    FE --> B1[BE 1\n列式扫描与聚合]
+    FE --> B2[BE 2\n列式扫描与聚合]
+    FE --> B3[BE 3\n列式扫描与聚合]
+    B1 --> R[并行合并结果]
+    B2 --> R
+    B3 --> R
+    R --> Q
+`} />
+
+Doris 适合销售大屏、即席分析、聚合查询和高并发报表。它可以通过导入任务、CDC 或湖仓表接入数据，但仍应明确：Doris 是分析服务层，不一定是全量原始数据的唯一事实来源。
+
+| 场景 | 更匹配的系统 | 原因 |
+| --- | --- | --- |
+| 订单事务、库存扣减 | MySQL / PostgreSQL | 事务和按主键更新 |
+| 用户画像点查、设备最新状态 | HBase | 海量 RowKey 读写、稀疏列 |
+| 销售额聚合、BI 大屏 | Doris | 列式存储、MPP 并行分析 |
+| 原始日志、图片、历史文件 | 对象存储 / HDFS | 成本低、容量大、可回放 |
+
+## 8. Airflow：让数据任务按依赖正确运行
+
+数据链路通常有明确依赖：凌晨 2 点同步原始数据，3 点生成明细层，4 点加工宽表，5 点刷新指标。Airflow 把这些任务组织成 DAG，负责定时触发、依赖判断、重试、补数和告警。
+
+Airflow **编排任务**，不等于它亲自完成所有大数据计算。真正的计算仍然可以运行在 Spark、Flink、Doris 或云数仓中。
+
+<Mermaid diagram={`
+flowchart LR
+    CRON[定时触发] --> DAG[Airflow DAG\n任务依赖图]
+    DAG --> INGEST[同步与落湖]
+    INGEST --> TRANSFORM[Spark / SQL 加工]
+    TRANSFORM --> CHECK{质量校验}
+    CHECK -->|通过| PUBLISH[发布指标与标签]
+    CHECK -->|失败| RETRY[重试、告警、补数]
+    RETRY --> DAG
+    PUBLISH --> CATALOG[更新目录、血缘与 SLA]
+    CATALOG --> CONSUMER[报表、API、模型]
+`} />
+
+一条健壮的 DAG 应该具备：幂等任务、明确的输入分区、超时和重试上限、失败告警、可补历史日期、质量检查，以及对上游延迟的处理。否则“任务显示成功”并不等于“数据真的可用”。
+
+## 9. 数据孤岛：为什么每个部门都有一套销售额
+
+当公司规模扩大后，常见的情况是：
+
+- 运营系统记录订单，财务系统记录结算，营销系统记录优惠券。
+- 市场部用自己的 SQL 算转化率，财务部用另一套 SQL 算净收入。
+- 同一个客户在不同系统里有不同 ID，业务口径无法对齐。
+- 数据只能在部门内部使用，跨部门需要人工导出和再加工。
+
+这就是 **数据孤岛（Data Silo）**：数据被锁在不同系统、团队或口径里，技术上可能彼此可见，业务上却无法顺畅共享。
+
+数据孤岛不是“没有数据仓库”这么简单。统一存储并不会自动统一含义，真正需要解决的是：主数据、指标定义、权限、质量、血缘和服务接口。
+
+## 10. 数据中台：把数据资产化、标准化、服务化
+
+数据中台不是一个巨型数据库，而是一套让数据可复用的组织和技术方法：
+
+1. **资产化**：把明细、指标、标签、特征和模型登记为可发现的资产。
+2. **标准化**：统一客户、商品、订单等主数据，以及指标的定义和粒度。
+3. **服务化**：通过 SQL、API、特征服务或消息订阅供多个业务线调用。
+4. **治理化**：为资产绑定负责人、质量规则、权限、更新频率和 SLA。
+
+<Mermaid diagram={`
+flowchart LR
+    RAW[湖仓明细数据] --> MODEL[标准模型\n客户、商品、订单]
+    MODEL --> METRIC[指标资产\n销售额、转化率、留存]
+    MODEL --> TAG[标签资产\n兴趣、活跃度、风险]
+    MODEL --> FEATURE[特征资产\n推荐与风控]
+    METRIC --> API[数据服务\nSQL / API / Feature Service]
+    TAG --> API
+    FEATURE --> API
+    API --> BI[BI 报表]
+    API --> REC[推荐系统]
+    API --> MKT[营销系统]
+    API --> RISK[风控系统]
+`} />
+
+市场部要做运动鞋促销时，可以直接调用“近 30 天浏览过运动鞋且未下单”的标签，而不必重新拉取日志、清洗行为、关联订单。中台的价值不在于多建一层表，而在于减少重复建设并让业务结果可追踪。
+
+## 11. 语义层：让“销售额”不再只是一个字段名
+
+到这里，数据已经被存储、计算和服务化，但还有一个容易被低估的问题：**不同工具是否理解同一件事？**
+
+业务人员说“销售额”，数据库可能有 `amount`、`amt_ttl_pre_dsc`、`paid_price` 三个字段；“客户数”到底是注册用户数、下单用户数，还是去重后的支付用户数；订单表和退款表如何关联，退款是否按订单发生日还是退款发生日统计？
+
+语义层（Semantic Layer）把物理数据翻译成业务可理解的逻辑模型，通常包含：
+
+| 概念 | 说明 | 水果店例子 |
+| --- | --- | --- |
+| 数据集 / 逻辑表 | 业务可理解的实体或事实 | 订单、客户、商品 |
+| 字段 | 可筛选、分组或参与计算的属性 | 下单日期、地区、商品类目 |
+| 维度 Dimension | 描述“谁、什么、哪里、何时” | 城市、渠道、月份 |
+| 事实 Fact | 粒度上的数值属性 | 一行订单的金额、数量 |
+| 指标 Metric | 聚合后的业务度量 | 销售额、客单价、转化率 |
+| 关系 Relationship | 逻辑数据集之间的连接 | 订单.customer_id → 客户.id |
+
+语义层不等于数据湖，也不等于指标 API。它描述的是“这些数据代表什么、如何计算、如何关联、有哪些同义词”，然后让 BI、SQL 生成器和 AI 助手复用这份定义。
+
+### 11.1 一个指标的完整定义
+
+“销售额”至少应说明：
+
+- 使用哪张逻辑数据集和哪个金额字段。
+- 是否排除取消订单和测试订单。
+- 是否扣除优惠券、退款和税费。
+- 默认时间字段是哪一个。
+- 指标支持哪些维度和关联路径。
+- 更新频率、负责人、版本和质量状态是什么。
+
+只把 SQL 片段复制到多个报表里，不能解决指标漂移；把口径、关系和上下文放入可版本化的语义模型，才有可能成为单一事实来源。
+
+## 12. OSI：用于交换语义模型的开放规范
+
+这里的 **OSI** 指 **Open Semantic Interchange**，是一个面向分析、BI 和 AI 工具的开放式语义模型交换规范。它的目标不是替代某个数据库，而是让语义模型能在不同平台之间传递和转换。
+
+截至本文撰写时，OSI 核心规范仍处于草案阶段（仓库标注为 `0.2.0.dev0`）。因此更准确的说法是“开放规范/规范草案”，而不是已经完成标准化的行业协议。
+
+OSI 的核心模型可以概括为：
+
+<Mermaid diagram={`
+flowchart TB
+    MODEL[Semantic Model\n一个可交换的语义模型] --> DATASETS[Datasets\n逻辑数据集]
+    DATASETS --> FIELDS[Fields\n字段、类型、维度角色]
+    MODEL --> REL[Relationships\n主键、外键、Join 关系]
+    MODEL --> METRICS[Metrics\n聚合、比率、业务指标]
+    MODEL --> AI[AI Context\n同义词、说明、使用提示]
+    MODEL --> DIALECTS[Expression Dialects\nANSI SQL / Snowflake / BigQuery 等]
+    MODEL --> TOOLS[BI、分析工具、AI Agent]
+`} />
+
+一个简化的 OSI YAML 模型如下。示例字段名按当前草案的思想编写，实际使用时应以规范版本和校验器为准。
+
+```yaml
+version: 0.2.0.dev0
+name: ecommerce_analytics
+description: Sales and customer analytics
+ai_context:
+  instructions: Use this model for sales analysis
+
+datasets:
+  - name: orders
+    source: sales.public.orders
+    primary_key: [order_id]
+    fields:
+      - name: order_date
+        datatype: Date
+        dimension:
+          is_time: true
+        expression:
+          dialects:
+            - dialect: ANSI_SQL
+              expression: order_date
+
+relationships:
+  - name: orders_to_customers
+    from: orders
+    to: customers
+    from_columns: [customer_id]
+    to_columns: [id]
+
+metrics:
+  - name: total_revenue
+    datatype: Decimal
+    description: Total revenue across valid orders
+    expression:
+      dialects:
+        - dialect: ANSI_SQL
+          expression: SUM(orders.amount)
+```
+
+这份文件描述了逻辑数据集、字段、关系、指标和 AI 上下文。消费者可以把它转换为自己的查询模型；不同 SQL 方言可以为同一个表达式提供不同写法，减少平台迁移时的手工改写。
+
+OSI 适合解决：
+
+- BI、AI Agent 和分析工具之间的语义模型交换。
+- 统一指标、维度、关系和同义词的结构。
+- 用版本控制审查语义模型的变化。
+- 在保留核心兼容性的同时，通过扩展承载厂商特有属性。
+
+OSI 不会自动解决：数据质量、权限、底层表的生命周期、指标是否符合公司财务制度，以及每个平台的查询性能。它是交换和描述层，仍需要数据平台来执行和治理。
+
+## 13. Snowflake 语义层：数据库里的 Semantic View
+
+Snowflake 提供的语义层叫 **Semantic View**。它是 Snowflake Schema 级别的对象，把业务概念、指标以及实体关系直接定义在数据库中。
+
+Snowflake 文档把物理对象和逻辑对象区分开：
+
+- **物理表**是实际存储数据的表或视图。
+- **逻辑表**是语义视图里面向业务的实体，例如 `orders`、`customers`。
+- **事实 Fact** 是行粒度上的数值属性，例如单行订单金额。
+- **维度 Dimension** 是用于分组和过滤的类别属性，例如日期、城市、商品类目。
+- **指标 Metric** 是聚合后的业务度量，例如总销售额、利润率。
+- **关系 Relationship** 描述逻辑表之间如何 Join。
+
+Snowflake Semantic View 可以通过 SQL 命令、Snowsight、Semantic Studio 或 YAML 规格创建，再被 SQL 查询和 Cortex Analyst 等 AI 能力使用。它把语义定义放在 Snowflake 内部，优点是权限、元数据和执行环境更集中。
+
+可以把两者的关系理解成：
+
+<Mermaid diagram={`
+flowchart LR
+    PHYSICAL[(Snowflake 物理表)] --> VIEW[Semantic View\n逻辑表、事实、维度、指标、关系]
+    YAML[YAML 规格 / Studio] --> VIEW
+    VIEW --> SQL[统一 SQL 查询]
+    VIEW --> AI[Cortex Analyst / Agent]
+    VIEW --> BI[BI 与报表]
+`} />
+
+### 13.1 OSI 与 Snowflake Semantic View 的区别
+
+| 对比项 | OSI | Snowflake Semantic View |
+| --- | --- | --- |
+| 定位 | 跨平台交换语义模型的开放规范 | Snowflake 内的可执行语义对象 |
+| 归属 | 供应商中立、社区协作 | Snowflake 平台能力 |
+| 主要载体 | JSON / YAML 文档 | 数据库对象、SQL、YAML、Studio |
+| 关注重点 | 模型结构、可移植性、方言和扩展 | 语义定义、查询执行、Snowflake AI/BI 集成 |
+| 运行位置 | 由消费方转换或执行 | 由 Snowflake 管理和执行 |
+| 适合场景 | 多工具、多平台交换和版本管理 | Snowflake 内统一指标与自然语言查询 |
+
+两者不是互相排斥的替代品。一个团队可以把 OSI 模型作为跨平台交换格式，再把它转换为 Snowflake Semantic View；也可以先在 Snowflake 中治理语义，再通过转换器向其他工具发布。真正重要的是，转换过程不能改变指标粒度、过滤条件和 Join 语义。
+
+## 14. 总体架构：把所有概念放回一条链路
+
+前面的组件分别位于不同层次：数据库和 HBase/Doris 解决不同的存储访问模式，Spark/Flink 负责批流计算，Airflow 负责编排，数据中台负责资产和服务，OSI/Snowflake 语义层负责统一业务含义。
+
+<Mermaid size="wide" diagram={`
+flowchart LR
+    subgraph S[数据源]
+        APP[App / Web 行为]
+        BIZ[(业务数据库\nMySQL / PostgreSQL)]
+        FILE[日志 / 图片 / 音视频]
+    end
+    subgraph I[接入层]
+        CDC[CDC / 批量 ETL]
+        STREAM[消息队列 / 实时采集]
+    end
+    subgraph L[湖仓与查询层]
+        LAKE[(对象存储 / HDFS\n原始数据湖)]
+        TABLE[(Iceberg / Delta\n明细与主题表)]
+        HBASE[(HBase\n画像与 Key 查询)]
+        DORIS[(Doris\nMPP OLAP 查询)]
+    end
+    subgraph C[计算与编排]
+        SPARK[Spark\n批处理 / 训练]
+        FLINK[Flink\n实时计算]
+        AIRFLOW[Airflow\n任务编排]
+    end
+    subgraph G[治理与语义]
+        GOV[目录、质量、权限、血缘]
+        SEM[OSI 模型 / Snowflake Semantic View]
+    end
+    subgraph A[应用]
+        BI[BI / 大屏]
+        REC[在线推荐]
+        MKT[精准营销]
+        RISK[风控 / 数据科学]
+    end
+    BIZ --> CDC --> TABLE
+    APP --> STREAM --> LAKE
+    FILE --> CDC --> LAKE
+    LAKE --> SPARK --> TABLE
+    LAKE --> FLINK --> TABLE
+    FLINK --> HBASE
+    TABLE --> DORIS
+    AIRFLOW -. 编排 .-> SPARK
+    AIRFLOW -. 编排 .-> FLINK
+    AIRFLOW -. 编排 .-> DORIS
+    GOV -. 描述与校验 .-> LAKE
+    GOV -. 描述与校验 .-> TABLE
+    TABLE --> SEM
+    DORIS --> SEM
+    HBASE --> REC
+    SEM --> BI
+    SEM --> MKT
+    SEM --> RISK
+`} />
+
+读这张图时可以抓住三种不同的线：
+
+- **数据流**：订单、事件和文件从源头流向存储、计算和服务。
+- **控制流**：Airflow 编排任务，治理规则校验质量和权限。
+- **语义流**：数据经过建模后，被翻译成指标、维度和关系，供工具和 AI 理解。
+
+架构分层不是为了让组件数量看起来很多，而是为了让“交易低延迟”“分析高吞吐”“实时画像”“统一指标”这些互相冲突的目标彼此隔离。
+
+## 15. 一笔订单的完整闭环
+
+以用户购买一箱苹果为例，端到端过程可以拆成八步：
+
+1. 用户提交订单，应用在 MySQL 中用事务写入订单、支付和库存，快速返回结果。
+2. CDC 捕获业务变更，把原始记录写入数据湖，保留来源、事件时间和偏移量。
+3. Airflow 在指定时间触发 Spark，去重、清洗、关联，生成订单宽表和离线指标。
+4. Flink 同时接收点击和交易事件，更新实时销售额、用户画像和推荐特征。
+5. HBase 保存适合按用户或设备 RowKey 查询的最新画像和状态。
+6. Doris 接收明细或聚合数据，为 BI 和运营大屏提供低延迟分析。
+7. 语义层把 `amount`、退款规则和订单状态封装成统一的“销售额”指标，BI、营销和 AI 查询复用同一口径。
+8. 推荐、营销、风控和数据科学系统使用这些资产，业务结果再通过新的行为事件反馈回来。
+
+<Mermaid diagram={`
+sequenceDiagram
+    autonumber
+    participant U as 用户
+    participant APP as 电商应用
+    participant DB as 业务数据库
+    participant MQ as 消息队列
+    participant CDC as CDC / ETL
+    participant LAKE as 数据湖
+    participant AIR as Airflow
+    participant SPARK as Spark
+    participant FLINK as Flink
+    participant HBASE as HBase
+    participant DORIS as Doris
+    participant SEM as 语义层
+    participant BI as BI / 推荐 / 营销
+    U->>APP: 提交订单
+    APP->>DB: 事务写入订单、支付、库存
+    DB-->>APP: 返回下单结果
+    APP-->>MQ: 发布点击与交易事件
+    DB-->>CDC: 捕获业务变更
+    CDC->>LAKE: 写入原始层
+    MQ->>FLINK: 投递实时事件
+    FLINK->>HBASE: 更新画像与状态
+    FLINK->>DORIS: 更新实时指标
+    AIR->>SPARK: 触发批任务
+    SPARK->>LAKE: 读取原始与历史数据
+    SPARK->>DORIS: 写入主题与聚合数据
+    DORIS-->>SEM: 提供可查询数据
+    SEM-->>BI: 指标、维度、关系
+    BI-->>APP: 推荐与营销动作
+`} />
+
+下单、扣库存和支付确认属于同步路径；数据同步、宽表加工、画像更新、报表和模型训练属于异步路径。把所有事情放进同步链路会让用户等待，把交易结果也异步化则会破坏订单一致性。
+
+<Mermaid diagram={`
+flowchart TB
+    ORDER[提交订单] --> TX[同步事务\n订单 + 支付 + 库存]
+    TX --> RESP[快速返回用户]
+    TX --> EVENT[异步发布事件]
+    EVENT --> SYNC[数据同步]
+    SYNC --> BATCH[批处理与主题建模]
+    EVENT --> REALTIME[实时画像与指标]
+    BATCH --> ASSET[指标、标签、特征]
+    REALTIME --> ASSET
+    ASSET --> SEM[语义层统一口径]
+    SEM --> SERVICE[SQL / API 服务]
+    SERVICE --> ACTION[推荐 / 营销 / BI]
+`} />
+
+## 16. 设计原则和可观测性
+
+### 16.1 四条原则
+
+- **交易与分析解耦**：不要在生产库上运行全表聚合，用 CDC、只读副本或资源隔离导出分析压力。
+- **原始数据可回放**：保留来源、事件时间、版本和校验信息；加工任务幂等，必要时可以从原始层重算。
+- **实时和离线共用口径**：统一主键、时间语义和维度定义，明确数据延迟与最终一致窗口。
+- **服务化而不是复制**：业务优先调用指标、标签和特征 API，服务层具备鉴权、限流、缓存、审计和版本管理。
+
+### 16.2 监控要覆盖整条链路
+
+<Mermaid diagram={`
+flowchart LR
+    SOURCE[数据源] --> INGEST[接入延迟、吞吐、堆积]
+    INGEST --> COMPUTE[计算成功率、运行时长]
+    COMPUTE --> ASSET[资产质量、更新延迟]
+    ASSET --> SEM[语义模型版本与指标校验]
+    SEM --> API[服务成功率、P95/P99]
+    API --> APP[业务应用与转化结果]
+    MON[统一监控] -. 采集 .-> INGEST
+    MON -. 采集 .-> COMPUTE
+    MON -. 采集 .-> ASSET
+    MON -. 采集 .-> SEM
+    MON -. 采集 .-> API
+    MON --> ALERT[告警、值班、故障演练]
+`} />
+
+| 维度 | 关键指标 | 告警例子 |
+| --- | --- | --- |
+| 接入 | 延迟、吞吐、堆积、重试 | 数据超过 SLA 未到达 |
+| 存储 | 分区完整性、容量、冷热占比 | 分区缺失、成本异常 |
+| 计算 | 成功率、运行时长、资源利用率 | 任务超时、连续失败 |
+| 质量 | 空值率、重复率、异常值、指标突变 | 销售额日环比异常 |
+| 语义 | 模型版本、指标变更、转换失败 | 同一指标生成不同 SQL |
+| 服务 | 成功率、P95/P99、限流次数 | 推荐接口超时 |
+| 安全 | 权限拒绝、敏感字段访问 | 非授权访问 |
+
+## 17. 落地路线：从一个闭环开始
+
+不建议一开始就建设“完整数据中台”。更实际的路线是选一个可量化的闭环，例如销售日报、留存分析或推荐特征：
+
+<Mermaid diagram={`
+flowchart LR
+    P1[1. 梳理数据源、主键、指标口径] --> P2[2. CDC / ETL 与原始湖]
+    P2 --> P3[3. 明细层、主题模型、质量规则]
+    P3 --> P4[4. Spark 批处理与 Airflow 调度]
+    P4 --> P5[5. Flink 实时链路与 HBase 状态]
+    P5 --> P6[6. Doris 查询与指标服务]
+    P6 --> P7[7. OSI / Snowflake 语义层]
+    P7 --> P8[8. BI、推荐、营销灰度]
+    P8 --> P9[9. 监控、成本与复用评估]
+`} />
+
+每一步都应该有可验证的结果：交付周期是否缩短，查询延迟是否下降，指标是否不再漂移，数据质量问题是否能提前发现，业务调用是否真的减少重复加工。只有这些结果被验证后，才值得继续拆分更多服务。
+
+## 18. 总结：每个组件都应该回答一个问题
+
+<Mermaid diagram={`
+flowchart LR
+    DB[数据库\n管当下在线交易] --> DW[数据仓库\n管结构化分析]
+    DW --> LAKE[数据湖\n管历史原始数据]
+    LAKE --> BIG[大数据\n存、算、管、用]
+    BIG --> MID[数据中台\n资产化、服务化]
+    MID --> SEM[语义层\n统一业务含义]
+    SEM --> VALUE[业务价值\n看见、预测、推荐、决策]
+`} />
+
+- **数据库**：让一笔交易正确发生。
+- **数据仓库**：让结构化历史数据可以稳定分析。
+- **数据湖**：让原始数据先留下来，未来仍可重算。
+- **HBase**：让海量稀疏数据按 RowKey 被快速读写。
+- **Doris**：让列式分析和 BI 查询并行、低延迟地运行。
+- **MapReduce、Spark、Flink**：分别对应离线拆分计算、批处理与迭代、实时流处理。
+- **Airflow**：让有依赖的数据任务按时、可重试、可补数地运行。
+- **数据中台**：把反复加工的数据沉淀为标准资产和服务。
+- **OSI**：用开放的 YAML/JSON 语义模型描述并交换数据含义。
+- **Snowflake Semantic View**：把逻辑表、事实、维度、指标和关系作为 Snowflake 内的语义对象执行。
+
+回到水果店：数据库守住“用户现在能不能下单”，数仓回答“昨天卖了多少”，数据湖保留“用户三年来所有行为”，Spark 和 Flink 负责“从数据中算出规律”，治理体系保证“数据可信且可控”，语义层保证大家对“销售额”的理解一致，数据中台则让推荐、营销、BI 和风控直接复用这些结果。
+
+数据架构不是产品名称的集合，也不是越复杂越先进。每增加一个组件，都应该对应一个明确的规模、时效、成本、可靠性或复用问题。成熟的架构，最终会让数据从产生到业务动作可追踪、可重算、可复用，并持续转化为业务价值。
+
+## 参考资料
+
+- 原始素材：用户提供的《从 Excel 到数据中台：用一家水果店讲透数据架构》文档，来源链接为 [微信公众号文章](https://mp.weixin.qq.com/s/s2mvkQCGT15t6YRSj2zo3w)。
+- [Open Semantic Interchange 官方网站](https://open-semantic-interchange.org/)。
+- [OSI 核心规范仓库](https://github.com/open-semantic-interchange/OSI/blob/main/core-spec/spec.md)。
+- [Snowflake：Overview of semantic views](https://docs.snowflake.com/en/user-guide/views-semantic/overview)。
+- [Snowflake：Semantic view YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。

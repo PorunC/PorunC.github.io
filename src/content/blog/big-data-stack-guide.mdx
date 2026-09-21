@@ -1,0 +1,804 @@
+---
+title: "大数据技术栈全景地图：从 Kafka、Flink 到 Doris 的原理、场景与选型"
+date: '2026-09-21T12:00:00.000Z'
+tags:
+  - Big Data
+  - Data Architecture
+  - Kafka
+  - Flink
+  - Doris
+  - Spark
+categories:
+  - Data
+  - System Design
+slug: 2026/09/21/big-data-stack-guide
+excerpt: 面向入门者梳理主流大数据技术栈：数据接入、消息队列、分布式存储、湖仓表格式、批流计算、OLAP、调度、治理与服务，并深入拆解 Kafka、Flink、Doris 的核心原理和端到端架构。
+---
+
+import Mermaid from '../../components/Mermaid.astro';
+
+如果刚开始学习大数据，最容易遇到的不是某个 API 不会用，而是一张密密麻麻的技术栈地图：Kafka、Flink、Spark、Hadoop、HDFS、Hive、Iceberg、Doris、Trino、Airflow、Kubernetes……它们看起来都和“海量数据”有关，却很难一眼看出彼此的边界。
+
+这篇文章尝试建立一张可以反复回看的地图。我们不按厂商或产品名罗列，而是按数据生命周期回答四个问题：
+
+1. 数据从哪里来，如何可靠地进入平台？
+2. 数据放在哪里，为什么要同时使用对象存储、HDFS、HBase 和列式文件？
+3. 数据如何计算，批处理、流处理和交互式查询分别解决什么问题？
+4. 数据如何被治理、调度、查询，最后变成报表、推荐和业务动作？
+
+先说明范围：严格意义上的“大数据组件”没有一个有限清单，云厂商托管服务、行业系统和各种商业发行版也无法全部列出。本文覆盖的是主流生产系统中最常见、最有代表性的组件和替代方案，并且优先解释原理、边界与选型，而不是追求产品数量。
+
+## 1. 先看全局：大数据平台到底在处理什么
+
+一笔电商订单会经历很多系统：应用写入业务数据库；数据库变更通过 CDC 进入消息队列；实时计算更新画像和指标；批处理生成历史宽表；Doris 或 Trino 服务分析查询；Airflow 负责依赖和补数；DataHub、OpenLineage 和质量规则让整条链路可追踪。
+
+<Mermaid size="wide" diagram={`
+flowchart LR
+    SOURCE[数据源\n订单、支付、日志、IoT、文件] --> INGEST[接入\nCDC、ETL、消息队列]
+    INGEST --> STORAGE[存储\n对象存储、HDFS、NoSQL、湖仓表]
+    STORAGE --> COMPUTE[计算\nMapReduce、Spark、Flink]
+    COMPUTE --> QUERY[查询\nDoris、ClickHouse、Trino、Hive]
+    QUERY --> SERVE[服务\nBI、API、推荐、风控、模型]
+    ORCH[Airflow / DolphinScheduler] -. 编排 .-> INGEST
+    ORCH -. 编排 .-> COMPUTE
+    ORCH -. 编排 .-> QUERY
+    GOVERN[元数据、血缘、质量、权限] -. 治理 .-> STORAGE
+    GOVERN -. 治理 .-> COMPUTE
+    GOVERN -. 治理 .-> SERVE
+`} />
+
+可以把这条链路理解成一座工厂：
+
+- **接入层**像收货口，把不同格式的数据搬进来。
+- **消息层**像传送带，允许多个下游按自己的速度消费同一份事件。
+- **存储层**像仓库，分别保存原始数据、分析表、在线状态和索引。
+- **计算层**像加工车间，把原始数据变成事实、维度、指标和特征。
+- **查询层**像柜台，根据业务问题快速取数。
+- **治理层**像质检、仓库管理和权限系统，保证数据可找到、可信、可控。
+
+## 2. 先记住五个决定技术选型的坐标
+
+同一个组件，在一个公司是核心，在另一个公司可能完全不需要。选型前先确定五个坐标。
+
+| 坐标 | 需要问的问题 | 典型结果 |
+| --- | --- | --- |
+| 数据规模 | 每天多少 GB/TB？保留多久？ | 单机、集群、对象存储 |
+| 时效目标 | 秒级、分钟级、小时级还是天级？ | Flink、Spark、批处理 |
+| 访问模式 | 点查、范围查、聚合还是全文检索？ | HBase、Doris、Elasticsearch |
+| 一致性 | 能否重复、延迟或最终一致？ | 事务、幂等、checkpoint |
+| 运维边界 | 团队能否维护集群？ | 托管服务、Kubernetes、自建 Hadoop |
+
+### 2.1 延迟和吞吐不是一回事
+
+“实时”不是一个精确的技术指标。风控可能要求几十毫秒，实时大屏可能允许 5 秒，运营报表可能每小时更新一次。吞吐则表示单位时间处理多少数据：每秒 10 万条事件不一定要求每条事件立刻返回结果。
+
+<Mermaid diagram={`
+flowchart TB
+    GOAL[业务目标] --> LATENCY{延迟目标}
+    LATENCY -->|毫秒级点查| KV[Redis / HBase / 在线服务]
+    LATENCY -->|秒级聚合| OLAP[Doris / ClickHouse / Pinot]
+    LATENCY -->|分钟到小时| STREAM[Flink / Spark Streaming]
+    LATENCY -->|小时到天| BATCH[Spark / Hive / MapReduce]
+    GOAL --> THROUGHPUT{吞吐与历史规模}
+    THROUGHPUT -->|高吞吐、可回放| LOG[Kafka / Pulsar]
+    THROUGHPUT -->|PB 级历史| LAKE[对象存储 / HDFS / Iceberg]
+`} />
+
+## 3. 数据源与接入：先把数据可靠地送进来
+
+### 3.1 业务数据库：数据的源头，不是分析终点
+
+MySQL、PostgreSQL、Oracle、SQL Server 等 OLTP 数据库负责订单、库存、账户和支付。它们重视事务、索引和低延迟更新，不适合承受大规模分析扫描。
+
+最常见的接入方式有三种：
+
+1. **全量导出**：每天或每小时把整表导出。实现简单，但成本高、延迟大。
+2. **增量时间字段**：按 `updated_at` 或自增 ID 拉取变化。容易漏掉删除和时钟异常。
+3. **CDC（Change Data Capture）**：读取数据库的 binlog、WAL 或 logical replication，捕获 insert/update/delete 事件。
+
+### 3.2 Debezium：用数据库日志做 CDC
+
+Debezium 通常运行在 Kafka Connect 上。MySQL 连接器读取 binlog，PostgreSQL 连接器读取逻辑复制流，然后把每张表的变更写成 Kafka topic；下游再通过 Sink Connector 写入湖仓、搜索引擎或分析数据库。
+
+<Mermaid diagram={`
+flowchart LR
+    DB[(MySQL / PostgreSQL)] --> LOG[binlog / WAL]
+    LOG --> DEB[Debezium Connector\n解析变更事件]
+    DEB --> KC[Kafka Connect\nSource Connector]
+    KC --> K[(Kafka Topic)]
+    K --> S1[湖仓 Sink]
+    K --> S2[Doris Sink]
+    K --> S3[搜索 / 缓存 Sink]
+`} />
+
+一个更新事件通常至少包含：主键、操作类型、变更前值、变更后值、事务或日志位置、事件时间和 Schema。下游不能只把它当作“最新一行”，还要决定如何处理乱序、重复、删除和 Schema 演进。
+
+**CDC 的核心难点**：
+
+- 数据库提交成功和事件发送成功之间如何保持可追踪？
+- Connector 重启后从哪里继续，如何避免重复或丢失？
+- 目标端收到 update 前是否已经收到 insert？
+- delete 是物理删除，还是写入 tombstone？
+
+因此 CDC 设计必须有 offset、幂等写入、死信队列和回放策略。CDC 不是把数据库复制到另一个地方那么简单，而是把事务日志转换成可被多个系统消费的事件流。
+
+### 3.3 ETL/ELT 与数据集成工具
+
+| 组件 | 主要用途 | 更适合的场景 |
+| --- | --- | --- |
+| Apache NiFi | 可视化数据流、路由、转换、背压 | 多协议接入、边缘采集、低代码数据流 |
+| Apache SeaTunnel | 批流一体的数据同步 | 多数据源迁移和实时同步 |
+| DataX | 离线异构数据源同步 | 定时批量搬运、传统数仓接入 |
+| Kafka Connect | 连接 Kafka 与外部系统 | CDC、Sink、标准化连接器 |
+| dbt | 在仓库内做 SQL 模型、测试和文档 | 分析建模、指标层、可版本化转换 |
+
+NiFi 的核心抽象是 FlowFile、Processor 和 Connection：处理器负责转换，连接负责排队和背压，流程图本身就是可观察的数据流。它适合“数据怎么走”非常重要的场景；复杂的 SQL 建模和大规模计算仍应交给 Spark、Flink 或数仓引擎。
+
+## 4. 消息与事件流：Kafka、Pulsar、RocketMQ
+
+消息系统解决的是异步解耦、削峰、广播和可回放。它不等于实时计算引擎：Kafka 保存和分发事件，Flink 读取事件并进行有状态计算。
+
+### 4.1 Kafka 解决什么问题
+
+Apache Kafka 官方把事件流描述为一条持续的数据通道：捕获事件、持久化保存、实时或历史处理，再路由到多个目的地。典型场景包括日志采集、CDC、支付事件、用户行为、服务解耦和数据总线。
+
+Kafka 的四个核心对象：
+
+| 对象 | 直观理解 |
+| --- | --- |
+| Topic | 一类事件的逻辑名称，例如 `orders` |
+| Partition | Topic 的并行和有序子流 |
+| Broker | 保存日志分区并响应读写请求的服务器 |
+| Consumer Group | 一组共同消费 Topic 的消费者实例 |
+
+### 4.2 Kafka 的内部原理：分区日志
+
+Kafka 不把消息当成取出即删除的队列，而是把每个分区当成追加写入的日志。消息有单调递增的 offset，消费者自己保存消费位置；因此多个消费者可以独立读取，同一份数据也可以被回放。
+
+<Mermaid diagram={`
+flowchart LR
+    P1[Producer\n订单服务] --> T[Topic: orders]
+    T --> A[Partition 0\noffset 0,1,2,3]
+    T --> B[Partition 1\noffset 0,1,2,3]
+    T --> C[Partition 2\noffset 0,1,2,3]
+    A --> G1[Group: realtime\nFlink]
+    B --> G1
+    C --> G1
+    A --> G2[Group: warehouse\n湖仓 Sink]
+    B --> G2
+    C --> G2
+    A --> G3[Group: audit\n审计服务]
+    B --> G3
+    C --> G3
+`} />
+
+**分区决定并行度和局部有序性**：同一个分区内可以保证顺序，不同分区之间没有天然全局顺序。若需要同一个订单的事件按顺序处理，通常用 `order_id` 作为分区键，让同一订单进入同一分区。
+
+**消费者组决定负载均衡**：同一组内，一个分区同一时刻通常只由一个消费者实例处理；不同组各自拥有独立 offset，可以从同一 Topic 读取不同用途的数据。
+
+**副本决定可靠性**：一个分区有 Leader 和 Follower 副本。生产者的确认级别、ISR 副本集合和刷盘策略共同决定“写成功”到底意味着什么。高可靠不等于零延迟，`acks=all`、跨可用区副本和较长保留期都会增加资源成本。
+
+### 4.3 Kafka 的关键工程问题
+
+#### 生产者如何提高吞吐
+
+批量发送、压缩、异步发送和合理的分区数可以提高吞吐。代价是单条消息可能在缓冲区等待更久，消息过大还会放大网络和磁盘压力。
+
+#### 消费者为什么会积压
+
+消费速度低于生产速度就会产生 lag。原因可能是下游数据库变慢、分区热点、反序列化昂贵、GC 或网络故障。解决思路不是盲目增加消费者，而是先看分区数、热点键和下游吞吐上限。
+
+#### “恰好一次”到底是什么
+
+Kafka 的 exactly-once 需要生产幂等、事务消息以及下游配合。即使 Kafka 内部没有重复，写入外部数据库时仍可能因为重试产生重复；因此业务 Sink 仍需要幂等键、事务或去重表。
+
+#### Schema 怎么演进
+
+生产者和消费者不一定同时升级。新增可选字段通常向后兼容，删除或改类型则可能破坏老消费者。Avro、Protobuf、JSON Schema 和 Schema Registry 可以把兼容性检查前移到发布阶段。
+
+### 4.4 Pulsar 与 RocketMQ 什么时候更合适
+
+| 组件 | 原理侧重点 | 常见优势 | 适合场景 |
+| --- | --- | --- | --- |
+| Kafka | 分区追加日志、消费者自管理 offset | 生态广、吞吐高、回放简单 | 数据总线、日志、CDC、流计算入口 |
+| Pulsar | Broker 与 BookKeeper 存储分离 | 多租户、分层存储、跨地域能力 | 多租户消息平台、全球化事件流 |
+| RocketMQ | Topic、MessageQueue、ConsumerGroup | 事务消息、延迟消息、业务消息模型 | 电商交易、订单、支付和异步解耦 |
+
+三者都能做消息队列，但不要只按“谁更快”选择。更重要的是已有生态、运维能力、消息顺序、事务、跨地域、保留和成本。
+
+## 5. 存储层：为什么需要多种存储系统
+
+没有一种存储同时擅长原始归档、随机点查、高并发聚合和全文检索。大数据平台通常采用多种存储，并让每种存储匹配一种访问模式。
+
+### 5.1 HDFS 与对象存储
+
+HDFS 把大文件切成 Block，分散到 DataNode，并通过副本保障容错；NameNode 保存文件到 Block 的映射。它适合集群内的高吞吐顺序读写。
+
+对象存储（S3、OSS、COS、OBS、MinIO 等）把数据组织为对象和 Key，容量弹性大、成本低、运维简单，适合湖仓的长期存储。但对象存储的目录列表、更新原子性和小文件问题需要由表格式解决。
+
+<Mermaid diagram={`
+flowchart TB
+    CLIENT[计算任务] --> META[NameNode / Catalog\n文件或表元数据]
+    CLIENT --> D1[DataNode / Object Store\nBlock 或对象 1]
+    CLIENT --> D2[DataNode / Object Store\nBlock 或对象 2]
+    CLIENT --> D3[DataNode / Object Store\n副本 / 版本]
+    D1 -. 容错复制 .-> D3
+    META -. 定位与快照 .-> D1
+    META -. 定位与快照 .-> D2
+`} />
+
+### 5.2 文件格式：Parquet、ORC、Avro
+
+| 格式 | 结构 | 优势 | 常见用途 |
+| --- | --- | --- | --- |
+| Parquet | 列式 | 压缩好、按列读取、跨引擎支持广 | 湖仓明细、分析查询 |
+| ORC | 列式 | 索引、谓词下推、Hive 生态成熟 | Hive 数仓、批量分析 |
+| Avro | 行式记录 + Schema | Schema 演进、序列化方便 | Kafka 事件、交换格式 |
+
+文件格式解决“数据怎样编码”，表格式解决“很多文件怎样组成一张可靠的表”。两者不要混为一谈。
+
+### 5.3 NoSQL：HBase、Cassandra、Redis、Elasticsearch
+
+| 组件 | 访问模式 | 核心机制 | 典型用途 |
+| --- | --- | --- | --- |
+| HBase | RowKey 点查、范围扫描 | Region 分片、LSM/HFile、列族 | 用户画像、设备状态、时间序列 |
+| Cassandra | 多副本、按分区键读写 | 去中心化、可调一致性 | 跨地域写入、时序和高可用 KV |
+| Redis | 内存点查、缓存、队列 | 内存数据结构、持久化、复制 | 热数据、限流、在线特征、缓存 |
+| Elasticsearch / OpenSearch | 倒排检索、聚合 | Segment、倒排索引、分片副本 | 日志检索、全文搜索、运维分析 |
+
+HBase 和 Cassandra 不是“更快的 MySQL”；它们通常需要先设计好访问键。Elasticsearch 也不是通用数仓，索引写入、Segment 合并和高基数聚合都有成本。
+
+## 6. 湖仓表格式：Iceberg、Hudi、Delta Lake、Paimon
+
+直接把 Parquet 文件放在对象存储上，会遇到并发写入、删除、更新、Schema 演进、小文件和一致读的问题。表格式在文件之上增加元数据、快照、事务和数据管理能力。
+
+### 6.1 Iceberg 的关键原理
+
+Iceberg 不依赖“列目录推断表状态”，而是通过表元数据和快照记录当前有哪些数据文件。一次写入创建新的快照，再原子替换当前元数据指针；读者读取某个快照，就能看到一致的文件集合。
+
+<Mermaid diagram={`
+flowchart LR
+    W1[Writer A\n写入新文件] --> M1[新 Table Metadata]
+    W2[Writer B\n写入新文件] --> M2[新 Table Metadata]
+    M1 --> COMMIT{原子提交当前快照}
+    M2 --> COMMIT
+    COMMIT --> SNAP[Snapshot N\n文件清单 + Schema + 分区信息]
+    SNAP --> R1[Reader A\n一致视图]
+    SNAP --> R2[Reader B\n一致视图]
+    COMMIT -. 冲突 .-> RETRY[校验当前状态后重试]
+`} />
+
+Iceberg 的优势包括：快照隔离、时间旅行、回滚、Schema 演进、隐藏分区、并发写入和跨计算引擎访问。它解决的是“表的一致性和可管理性”，不自动解决查询性能；仍需要分区设计、文件合并、统计信息和计算引擎优化。
+
+### 6.2 Hudi、Delta Lake、Paimon 的差异方向
+
+| 表格式 | 设计侧重点 | 典型场景 |
+| --- | --- | --- |
+| Iceberg | 开放规范、快照、跨引擎兼容 | 多引擎湖仓、长期表治理 |
+| Hudi | Upsert、增量拉取、近实时数据湖 | CDC 入湖、增量数据管道 |
+| Delta Lake | 事务日志、Spark 生态、工程易用性 | Databricks/Spark 湖仓 |
+| Paimon | 流式更新、主键表、Flink 生态 | 实时湖仓、变更数据与流批一体 |
+
+选型时先问“更新和查询模式是什么”：追加为主、频繁 Upsert、需要增量消费，还是多引擎读取？不要因为都叫 Lakehouse Table Format 就认为它们可以无成本互换。
+
+## 7. 批处理计算：MapReduce 与 Spark
+
+### 7.1 MapReduce：分而治之的起点
+
+MapReduce 把数据处理拆成 Map 和 Reduce：Map 对分片并行处理，Shuffle 按 Key 重分区，Reduce 汇总同一 Key 的数据。它把容错建立在中间结果落盘和任务重试上，简单但磁盘 IO 多、迭代任务慢。
+
+<Mermaid diagram={`
+flowchart LR
+    INPUT[(海量订单文件)] --> SPLIT[Input Split]
+    SPLIT --> M1[Map Task 1\n局部统计]
+    SPLIT --> M2[Map Task 2\n局部统计]
+    SPLIT --> M3[Map Task 3\n局部统计]
+    M1 --> SHUFFLE[Shuffle\n按 Key 分区、排序]
+    M2 --> SHUFFLE
+    M3 --> SHUFFLE
+    SHUFFLE --> REDUCE[Reduce Task\n聚合结果]
+    REDUCE --> OUT[输出文件]
+`} />
+
+MapReduce 仍适合稳定、长时间运行的离线作业，但新系统更多选择 Spark、Hive on Tez、Trino 或云数仓。
+
+### 7.2 Spark：统一的批、SQL、流与机器学习引擎
+
+Spark 官方定位是大规模数据分析的统一引擎，提供 RDD、DataFrame、Spark SQL、Structured Streaming、MLlib 和 GraphX。它把用户代码编译成执行图，由 Driver 规划任务，Executor 在集群上执行。
+
+Spark 的核心思想不是“所有数据都放内存”，而是构建 DAG、划分 Stage、通过 Shuffle 传输分区数据，并在可能时缓存中间结果。
+
+<Mermaid diagram={`
+flowchart LR
+    CODE[用户代码 / SQL] --> DRIVER[Driver\n构建 DAG、切分 Stage]
+    DRIVER --> SCHED[Scheduler\n分配 Task]
+    SCHED --> E1[Executor 1\nTask / Cache]
+    SCHED --> E2[Executor 2\nTask / Cache]
+    SCHED --> E3[Executor 3\nTask / Cache]
+    E1 --> SHUFFLE[Shuffle\n跨节点重分区]
+    E2 --> SHUFFLE
+    E3 --> SHUFFLE
+    SHUFFLE --> RESULT[写回湖仓 / 数仓]
+`} />
+
+Spark 调优的关键通常在：分区数量、Shuffle 数据量、数据倾斜、缓存是否值得、Join 策略、文件小文件和 Executor 资源。`cache()` 不是万能加速器；缓存数据太大反而会导致内存压力和淘汰。
+
+## 8. 流处理计算：Flink 的核心原理
+
+Flink 与 Spark 的流处理都能做实时计算，但 Flink 从设计上更强调持续运行的有状态流处理、事件时间和一致性状态。
+
+### 8.1 Flink 的运行时组件
+
+Flink 集群主要由 JobManager 和 TaskManager 组成：JobManager 负责作业解析、调度、checkpoint 协调和失败恢复；TaskManager 执行算子子任务并交换数据；Task Slot 是资源调度的基本单位。
+
+<Mermaid diagram={`
+flowchart LR
+    CLIENT[提交 Flink Job] --> JM[JobManager\nJobGraph、调度、Checkpoint、恢复]
+    JM --> RM[ResourceManager\n申请 Task Slot]
+    RM --> TM1[TaskManager 1\nSource / Map / Window]
+    RM --> TM2[TaskManager 2\nKeyBy / Aggregate]
+    RM --> TM3[TaskManager 3\nSink]
+    TM1 --> TM2
+    TM2 --> TM3
+    JM -. 状态快照 .-> CP[(Checkpoint Storage)]
+    CP -. 故障恢复 .-> JM
+`} />
+
+### 8.2 状态：流计算真正难的地方
+
+无状态计算只处理当前事件；有状态计算需要记住过去发生的事情。例如“过去 5 分钟每个用户的订单数”“同一订单的支付和退款是否匹配”“每个设备最近一次状态”。状态可能很大，不能只放在 JVM 内存里。
+
+Flink 的 Keyed State 按 Key 分区保存，算子可以使用 ValueState、ListState、MapState 等。状态后端负责存放和快照，通常结合 RocksDB 或增量状态存储处理大状态。
+
+### 8.3 事件时间、处理时间和 Watermark
+
+- **处理时间**：事件到达 Flink 的机器时间，简单但乱序时不准确。
+- **事件时间**：事件在业务系统中真正发生的时间，适合交易和行为分析。
+- **Watermark**：系统对“某个时间之前的事件大概率已经到齐”的进度估计，用来触发窗口。
+
+例如 10:00 的窗口，如果允许 2 分钟乱序，Watermark 到达 10:02 左右后才关闭窗口。允许更长乱序会减少迟到数据，但结果延迟更大。
+
+<Mermaid diagram={`
+flowchart LR
+    E1[事件时间 10:00:05] --> W[Watermark\n推进事件时间]
+    E2[事件时间 09:59:58\n晚到] --> W
+    W --> WIN[10:00 窗口\n聚合用户订单]
+    WIN --> LATE{迟到事件}
+    LATE -->|在允许范围内| UPDATE[更新窗口结果]
+    LATE -->|超过范围| SIDE[侧输出 / 补数]
+`} />
+
+### 8.4 Checkpoint：失败后恢复到哪里
+
+Flink checkpoint 会周期性保存算子状态和输入流位置。发生故障时，作业从最近一次成功 checkpoint 恢复，重新消费之后的事件，使处理结果尽量接近无故障执行。
+
+Exactly-once 并不是一句配置就能保证：Flink 内部的状态和 Source offset 可以一致，但 Sink 必须支持事务、幂等提交或两阶段提交，才能把端到端重复控制住。
+
+### 8.5 反压与算子链
+
+如果下游 Sink 处理不过来，反压会沿着数据流向上游传播，阻止生产速度无限增加。反压是保护系统的机制，不是错误；真正的问题是找出慢算子、热点 Key、外部依赖或资源不足的原因。
+
+Flink 会把相邻算子链在同一个线程或任务中执行，减少序列化和网络传输；需要跨节点时通过网络 Shuffle 交换数据。并行度、KeyBy 分布、窗口状态大小和 Sink 吞吐共同决定性能。
+
+## 9. Doris：从明细到低延迟分析的 MPP 引擎
+
+Apache Doris 是面向实时分析的 MPP 数据仓库，支持高并发点查和高吞吐复杂分析，常用于报表、大屏、即席查询、日志分析、用户画像和电商分析。
+
+### 9.1 FE 与 BE：谁负责什么
+
+- **FE（Frontend）**：接收请求、解析 SQL、生成执行计划、管理元数据和节点。
+- **BE（Backend）**：保存数据、扫描列式文件、执行算子和返回中间结果。
+- **Broker/外部表等**：在访问对象存储、HDFS 或湖仓表时提供外部数据接入能力。
+
+<Mermaid diagram={`
+flowchart LR
+    CLIENT[BI / JDBC / MySQL 协议] --> FE[FE\n解析、优化、元数据、调度]
+    FE --> BE1[BE 1\n分片、列式扫描、聚合]
+    FE --> BE2[BE 2\n分片、列式扫描、聚合]
+    FE --> BE3[BE 3\n分片、列式扫描、聚合]
+    BE1 --> MERGE[Exchange / Shuffle\n合并中间结果]
+    BE2 --> MERGE
+    BE3 --> MERGE
+    MERGE --> CLIENT
+`} />
+
+FE 更像“指挥中心”，BE 更像“数据和计算工人”。FE 不负责把所有数据读一遍，BE 节点会并行扫描各自分片，再通过 Exchange、聚合和 Join 合并结果。
+
+### 9.2 为什么 Doris 查询快
+
+#### 列式存储
+
+查询只需要 `region` 和 `amount` 时，列式存储不必读取地址、备注等无关列；编码和压缩减少磁盘 IO。
+
+#### MPP 并行
+
+一条 SQL 会拆成多个 Fragment，分发到多个 BE 并行执行。大表 Join 可以通过 Shuffle 把同一 Join Key 的数据发到同一个执行节点。
+
+#### 向量化执行
+
+算子一次处理一批列值，而不是逐行调用大量虚函数；这更容易利用 CPU Cache 和 SIMD 指令，提高扫描、过滤、聚合效率。
+
+#### Pipeline 执行
+
+查询被拆成多个可并发的 Pipeline Task，在有限线程资源内推进数据，减少不必要的拷贝和线程爆炸。
+
+#### 索引和数据裁剪
+
+排序键、Min/Max、Bloom Filter、倒排索引和分区裁剪可以让 BE 跳过大量不可能命中的数据。
+
+### 9.3 Doris 的表模型
+
+| 表模型 | 适合场景 | 关键思路 |
+| --- | --- | --- |
+| Duplicate Key | 明细日志、事件 | 保留每一行，不主动去重 |
+| Aggregate Key | 固定维度汇总 | 写入时按 Key 聚合指定指标 |
+| Unique Key | 主键更新、CDC | 同一主键保留最新版本或合并结果 |
+| Primary Key | 高频更新和实时明细 | 主键模型支持更灵活的更新语义 |
+
+表模型不是装饰配置，而是决定写入、更新、存储和查询语义。若把明细表错误地设计成聚合模型，后续想追溯原始事件会非常困难；若把高频更新表设计成不合适的模型，写入和 Compaction 成本会明显上升。
+
+### 9.4 Doris 存算一体与存算分离
+
+传统 Doris 集群中，BE 同时保存数据和执行查询，扩容简单但计算与存储绑定。存算分离架构把数据放在 S3、HDFS、OSS、COS、OBS、MinIO 或 Ceph 等共享存储，计算节点可以按查询负载弹性扩缩。
+
+<Mermaid diagram={`
+flowchart TB
+    SQL[查询请求] --> META[元数据层\n解析、规划、权限]
+    META --> C1[计算组 1\n无状态 BE]
+    META --> C2[计算组 2\n无状态 BE]
+    C1 --> SHARED[(共享存储\nS3 / HDFS / OSS / Ceph)]
+    C2 --> SHARED
+    SHARED --> C1
+    SHARED --> C2
+`} />
+
+存算分离适合计算负载波动、多租户和湖仓查询；存算一体则更简单、网络路径更短。真正的选择要看查询形态、成本、数据共享和运维能力。
+
+### 9.5 Doris 适合什么，不适合什么
+
+**适合**：销售大屏、实时指标、用户画像聚合、日志分析、即席 SQL、高并发报表、湖仓查询加速。
+
+**不适合直接替代**：高并发事务数据库、复杂在线 KV 点查、长期原始文件归档、需要任意全文相关性检索的搜索系统。
+
+## 10. 查询层：Hive、Trino、Spark SQL、ClickHouse、StarRocks
+
+### 10.1 Hive：SQL 化的早期数仓基础
+
+Hive 提供 SQL 接口、Hive Metastore 和表分区等抽象，把 Hadoop 上的批处理变成更容易编写的 SQL。今天 Hive 常作为元数据服务、历史数仓兼容层或 Iceberg/Hudi/ORC 的一部分，而不是所有低延迟分析的首选。
+
+### 10.2 Trino/Presto：联邦查询
+
+Trino 的核心是一个 Coordinator 规划查询，多个 Worker 访问不同 Connector，把 MySQL、Hive/Iceberg、Kafka、Elasticsearch 等数据源组合成一条 SQL。
+
+它适合探索性分析、跨源 Join 和湖仓查询，但跨源网络、数据格式转换和远端系统限流会影响性能。联邦查询不是“免费把所有系统变成一个数仓”。
+
+### 10.3 ClickHouse、StarRocks、Doris 的选择方向
+
+| 引擎 | 典型优势 | 更常见的选择理由 |
+| --- | --- | --- |
+| Doris | 实时数仓、MySQL 协议、湖仓查询和高并发分析 | 国内生态、实时导入、统一分析 |
+| StarRocks | 向量化 MPP、实时数仓、查询性能 | 高性能实时分析、湖仓联邦 |
+| ClickHouse | 极致列式分析、压缩和大规模聚合 | 日志、指标、时间序列、重聚合 |
+| Druid | 时间序列、低延迟聚合和实时摄入 | OLAP 看板、事件分析 |
+| Pinot | 实时摄入、高并发低延迟切片分析 | 用户行为、监控、推荐特征 |
+
+不要只比较单次 Benchmark。数据模型、查询模板、写入方式、更新比例、并发、冷热数据和运维工具更重要。
+
+## 11. 资源管理与部署：YARN、Kubernetes、ZooKeeper
+
+### 11.1 YARN：把资源管理和计算框架分开
+
+YARN 的设计把全局资源管理、应用调度和任务执行分开：ResourceManager 负责集群资源，NodeManager 负责每台机器的容器和资源监控，ApplicationMaster 负责某个应用的任务协商和执行。
+
+它适合 Hadoop/Spark/Flink 等大数据集群的资源隔离与队列调度。
+
+### 11.2 Kubernetes：把工作负载放进容器平台
+
+Kubernetes 通过 API Server、Scheduler、Controller、Node/Kubelet 和容器运行时管理 Pod、Service、StatefulSet、Job 等对象。Flink、Spark、Kafka、Doris 都可以运行在 Kubernetes 上，但 Stateful 工作负载需要认真设计磁盘、网络、故障域和升级策略。
+
+<Mermaid diagram={`
+flowchart LR
+    USER[提交 Job / Deployment] --> API[API Server\n期望状态]
+    API --> SCHED[Scheduler\n选择节点]
+    API --> CTRL[Controllers\n持续校正状态]
+    SCHED --> N1[Node 1\nPod / TaskManager]
+    SCHED --> N2[Node 2\nPod / Broker]
+    SCHED --> N3[Node 3\nPod / FE / BE]
+    N1 --> KUBE[Kubelet + Runtime]
+    N2 --> KUBE
+    N3 --> KUBE
+    KUBE -. 状态上报 .-> API
+`} />
+
+### 11.3 ZooKeeper：分布式协调服务
+
+ZooKeeper 提供层次化命名空间、临时节点、Watch 和一致性更新，常被用于选主、服务发现、配置和集群协调。Kafka 新版本逐步减少对 ZooKeeper 的依赖，但大量传统组件仍然使用它。
+
+不要把 ZooKeeper 当作业务数据库或大容量配置中心。它擅长小量元数据和协调，不适合承载大量业务数据。
+
+## 12. 调度与工作流：Airflow、DolphinScheduler、Dagster
+
+调度器解决“什么时候运行、依赖是否满足、失败如何重试、历史日期如何补数”，不是用来替代 Spark 或 Flink 的计算引擎。
+
+| 调度器 | 思路 | 适合场景 |
+| --- | --- | --- |
+| Airflow | Python DAG、Operator、Scheduler、Executor | 通用数据编排、生态丰富 |
+| DolphinScheduler | 可视化工作流、任务依赖和租户管理 | 国内企业、复杂数据流程 |
+| Dagster | 软件定义资产、类型和测试 | 现代数据资产、开发体验 |
+
+一个生产 DAG 至少应具备：幂等、超时、重试上限、补数参数、输入分区、数据质量闸门、告警和可观测性。
+
+<Mermaid diagram={`
+flowchart LR
+    START[定时 / 事件触发] --> A[同步原始数据]
+    A --> B[校验分区与行数]
+    B --> C[Spark / Flink 加工]
+    C --> D[质量检查]
+    D -->|通过| E[发布 Doris / 湖仓表]
+    D -->|失败| F[重试 / 告警 / 补数]
+    F --> A
+    E --> G[更新元数据、血缘、SLA]
+`} />
+
+## 13. 治理与可靠性：让数据敢被使用
+
+### 13.1 元数据与数据目录
+
+DataHub、Apache Atlas、OpenMetadata 等系统记录表、字段、Owner、标签、Schema、血缘和使用情况。DataHub 的一个重要思路是 Schema-first 的元数据模型和流式元数据变更，让目录可以实时反映数据资产变化。
+
+数据目录解决“找得到、看得懂、知道谁负责”；它不能替代语义层、质量规则和底层权限。
+
+### 13.2 OpenLineage：标准化血缘事件
+
+OpenLineage 把运行中的 Job、Dataset 和 Run 作为核心实体，通过可扩展 Facet 记录输入、输出、Schema、版本等信息。它让不同调度器和计算引擎可以用统一模型发送血缘。
+
+<Mermaid diagram={`
+flowchart LR
+    JOB[Airflow DAG] --> OL[OpenLineage Event]
+    SPARK[Spark Job] --> OL
+    FLINK[Flink Job] --> OL
+    OL --> META[DataHub / Atlas / Marquez]
+    META --> SEARCH[数据目录、影响分析、审计]
+    META --> ALERT[上游变更告警]
+`} />
+
+### 13.3 数据质量
+
+质量规则可以分为：
+
+- **完整性**：分区是否到达，行数是否为零。
+- **唯一性**：主键是否重复，事件 ID 是否重复。
+- **有效性**：金额是否为负，枚举值是否合法。
+- **一致性**：订单总额是否等于明细之和。
+- **及时性**：数据是否在 SLA 前到达。
+- **稳定性**：指标是否出现异常突变。
+
+Great Expectations、Deequ、dbt tests 等工具可以把规则写成代码并在流水线中执行。质量检查要有“失败时怎么办”的策略：阻断发布、降级使用、标记不可信，还是触发补数。
+
+### 13.4 权限与审计
+
+Apache Ranger、云 IAM、数据库行列级权限、KMS 和脱敏策略共同组成访问控制。关键原则是：权限在数据源、查询层、语义层和服务层都不能被绕过；日志需要记录谁在什么时候访问了什么数据。
+
+## 14. 机器学习与大数据的连接
+
+大数据平台经常为推荐、风控和预测服务，但计算平台和模型平台不是同一回事。
+
+- **MLlib / scikit-learn / PyTorch**：训练和推理库。
+- **MLflow**：实验跟踪、模型注册、评估和部署管理。
+- **Feast**：离线训练特征与在线推理特征的统一服务。
+- **Kubeflow**：在 Kubernetes 上编排机器学习工作流。
+
+实时推荐常见架构是：Kafka 接收行为事件，Flink 更新实时特征，Feast 或 Redis 提供在线读取，模型服务返回候选结果；Spark 负责离线样本和训练集。
+
+<Mermaid diagram={`
+flowchart LR
+    EVENT[点击、搜索、订单事件] --> K[Kafka]
+    K --> F[Flink\n窗口、状态、实时特征]
+    F --> ONLINE[(Redis / Feast Online Store)]
+    HIST[历史数据湖] --> SPARK[Spark\n样本与离线特征]
+    SPARK --> TRAIN[训练 / MLflow]
+    ONLINE --> SERVE[模型服务\n实时推理]
+    TRAIN --> SERVE
+    SERVE --> APP[推荐 / 风控 / 个性化]
+`} />
+
+特征的关键不是“算出来”就结束，而是训练时和线上推理时必须使用一致的定义，避免训练-服务偏差（training-serving skew）。
+
+## 15. 端到端案例：一笔订单如何变成实时大屏
+
+下面把前面的组件串起来。假设用户下单后，业务希望：
+
+- 订单在 MySQL 中可靠提交。
+- 秒级更新实时成交额和用户画像。
+- 每小时生成销售主题宽表。
+- Doris 为运营大屏提供查询。
+- 三年历史数据保存在湖仓，供 Spark 训练模型。
+
+<Mermaid diagram={`
+sequenceDiagram
+    autonumber
+    participant APP as 电商应用
+    participant DB as MySQL
+    participant CDC as Debezium
+    participant K as Kafka
+    participant F as Flink
+    participant H as HBase / Redis
+    participant LAKE as Iceberg 湖仓
+    participant S as Spark
+    participant D as Doris
+    participant A as Airflow
+    participant BI as BI / 推荐 / 风控
+    APP->>DB: 事务写订单、支付、库存
+    DB-->>APP: 返回下单结果
+    DB->>CDC: binlog / WAL 变更
+    CDC->>K: 发布订单事件
+    K->>F: 消费事件
+    F->>H: 更新画像与在线状态
+    F->>D: 写入实时指标
+    K->>LAKE: 原始事件落湖
+    A->>S: 触发小时批任务
+    S->>LAKE: 清洗、去重、建模
+    S->>D: 发布主题表与聚合
+    D-->>BI: 低延迟报表查询
+    H-->>BI: 推荐 / 风控在线特征
+`} />
+
+这条链路里，每个组件都对应一个具体问题：
+
+| 问题 | 组件 | 为什么不是另一个组件 |
+| --- | --- | --- |
+| 可靠保存订单 | MySQL | 需要事务和按主键更新 |
+| 捕获变更 | Debezium | 读取数据库日志，避免反复全表扫描 |
+| 多下游分发和回放 | Kafka | 追加日志、分区并行、消费者组 |
+| 秒级有状态计算 | Flink | 事件时间、状态、checkpoint |
+| 用户最新画像点查 | HBase / Redis | KV 访问延迟低 |
+| 原始历史归档 | Iceberg + 对象存储 | 快照、Schema 演进、低成本 |
+| 小时级加工 | Spark | 批量 DAG、SQL、宽表和训练 |
+| 大屏和聚合 | Doris | 列式、MPP、向量化、Pipeline |
+| 依赖和补数 | Airflow | DAG、重试、告警和回填 |
+
+## 16. 组件全景速查表
+
+下面这张表用于建立“我应该先了解哪些组件”的索引。它不是采购清单，也不是要求全部部署。
+
+| 层次 | 代表组件 | 主要用途 | 核心原理关键词 |
+| --- | --- | --- | --- |
+| 业务源 | MySQL、PostgreSQL、Oracle | 事务和业务状态 | WAL、binlog、索引、事务 |
+| CDC | Debezium、Canal、Flink CDC | 捕获增量变化 | 日志解析、offset、幂等 |
+| 接入 | NiFi、SeaTunnel、DataX | 批流同步和路由 | Connector、背压、重试 |
+| 消息 | Kafka、Pulsar、RocketMQ | 异步解耦、削峰、事件总线 | 分区、复制、消费位点 |
+| 文件 | Parquet、ORC、Avro | 编码和交换 | 列式、压缩、Schema |
+| 分布式存储 | HDFS、S3、OSS、MinIO | 海量文件和归档 | Block、对象、复制、容量 |
+| 表格式 | Iceberg、Hudi、Delta、Paimon | 可靠湖仓表 | Snapshot、事务、Upsert |
+| NoSQL | HBase、Cassandra、Redis | 点查、KV、在线状态 | RowKey、分区、副本、内存 |
+| 搜索 | Elasticsearch、OpenSearch | 全文检索和日志 | 倒排索引、Segment、分片 |
+| 批计算 | MapReduce、Spark、Hive | 离线 ETL 和训练 | DAG、Shuffle、Stage |
+| 流计算 | Flink、Spark Streaming、Kafka Streams | 实时 ETL 和指标 | State、Watermark、Checkpoint |
+| 统一模型 | Apache Beam | 一套 API 表达批流 | Pipeline、PCollection、Runner |
+| OLAP | Doris、StarRocks、ClickHouse | 聚合和实时分析 | MPP、列存、向量化 |
+| 低延迟 OLAP | Druid、Pinot | 事件切片和看板 | Segment、倒排、实时摄入 |
+| 联邦查询 | Trino、Presto | 跨源 SQL | Coordinator、Worker、Connector |
+| 资源 | YARN、Kubernetes | 集群调度和隔离 | Container、Pod、Scheduler |
+| 协调 | ZooKeeper、etcd | 选主、配置、服务发现 | 一致性、临时节点、Watch |
+| 调度 | Airflow、DolphinScheduler、Dagster | DAG、重试、补数 | Workflow、依赖、SLA |
+| 建模 | dbt、Hive Metastore | SQL 模型、文档、测试 | DAG、契约、增量 |
+| 元数据 | DataHub、Atlas、OpenMetadata | 目录、搜索、Owner | Metadata、Schema、Graph |
+| 血缘 | OpenLineage、Marquez | 任务和数据依赖 | Job、Dataset、Run、Facet |
+| 质量 | Great Expectations、Deequ、dbt tests | 规则与质量闸门 | 完整性、唯一性、及时性 |
+| 安全 | Ranger、IAM、KMS | 授权、脱敏、审计 | RBAC、行列权限、加密 |
+| BI | Superset、Grafana、Tableau | 可视化和探索 | SQL、缓存、语义模型 |
+| MLOps | MLflow、Feast、Kubeflow | 特征、模型和实验 | Registry、Feature Store、Serving |
+
+## 17. 新手应该怎样学习这张地图
+
+### 路线一：先搞懂数据和 SQL
+
+先学习表、主键、Join、聚合、分区、索引、事务和窗口函数。没有这些基础，直接学 Flink 或 Kafka 很容易只记住 API，不理解结果为什么错。
+
+### 路线二：用 Kafka 学事件流
+
+自己创建一个 `orders` Topic：设置多个分区，启动多个消费者，观察同一 Consumer Group 如何分配分区；再改变分区键，观察同一个订单是否保持顺序；最后模拟消费者停机，观察 offset 和 lag。
+
+### 路线三：用 Flink 学时间和状态
+
+实现一个窗口计数：先用处理时间，再改成事件时间；制造乱序和迟到事件；保存 checkpoint 后杀掉任务，再观察状态恢复。这个实验比背概念更容易理解 Watermark、State 和 Exactly-once。
+
+### 路线四：用 Doris 学 OLAP
+
+导入一批 Parquet 或 CSV，建立不同 Key 模型，执行过滤、聚合、Join 和 Top-N；查看执行计划，观察分区裁剪、列裁剪、Runtime Filter 和并行 Fragment。
+
+### 路线五：最后学习治理和生产化
+
+为数据表添加 Owner、Schema、质量规则和血缘；用 Airflow 做依赖和补数；为重要指标写黄金 SQL 和回归样例。生产系统的难点通常不在“第一次跑通”，而在于失败、重跑、升级和追责时仍然可控。
+
+## 18. 常见误区
+
+### 误区一：组件越多，架构越先进
+
+每个组件都增加部署、监控、升级和故障边界。小团队可能只需要 Kafka + Spark + 对象存储 + Doris，不需要同时维护 Hadoop、HBase、Trino、Flink、Iceberg 和三套调度器。
+
+### 误区二：Kafka 是数据库，Flink 是消息队列
+
+Kafka 保存并分发事件；Flink 读取事件、维护状态并计算结果。Kafka 可以长时间保留数据，但不适合替代交易数据库；Flink 可以输出事件，但不负责作为通用消息存储。
+
+### 误区三：实时系统就是把批处理改成每条数据执行一次
+
+流处理需要处理乱序、迟到、状态、checkpoint、反压、重启和外部 Sink 一致性。实时并不是把 `for` 循环放到消息监听器里。
+
+### 误区四：Doris 快，所以什么都放 Doris
+
+Doris 是优秀的分析引擎，但原始文件、事务写入、超低延迟 KV 和全文搜索仍有更匹配的系统。先定义访问模式，再决定是否导入 Doris。
+
+### 误区五：Exactly-once 是配置项，不是链路属性
+
+端到端一致性必须贯穿 Source、计算状态、消息位点和 Sink。只在 Flink 或 Kafka 中打开一个开关，无法自动让外部数据库具备 exactly-once。
+
+### 误区六：只做技术监控，不做数据监控
+
+CPU、内存和网络正常，不代表数据正确。还要监控延迟、分区、行数、空值、重复、指标突变、Schema 变化和血缘影响。
+
+## 19. 最终的选型决策树
+
+当你面对一个新需求，可以沿着下面的顺序排除，而不是从“哪个产品最流行”开始。
+
+<Mermaid size="wide" diagram={`
+flowchart TB
+    START[新数据需求] --> TX{是否需要事务与按键更新？}
+    TX -->|是| OLTP[MySQL / PostgreSQL / NewSQL]
+    TX -->|否| RETAIN{是否需要长期保存与回放？}
+    RETAIN -->|是| LAKE[对象存储 + Parquet + Iceberg/Hudi/Delta]
+    RETAIN -->|否| LAT{延迟目标？}
+    LAT -->|毫秒级点查| KV[Redis / HBase / Cassandra]
+    LAT -->|秒级聚合| OLAP[Doris / StarRocks / ClickHouse]
+    LAT -->|实时有状态| STREAM[Flink / Kafka Streams]
+    LAT -->|小时或天级| BATCH[Spark / Hive / MapReduce]
+    STREAM --> MQ[Kafka / Pulsar / RocketMQ]
+    BATCH --> ORCH[Airflow / DolphinScheduler / Dagster]
+    OLAP --> GOVERN[质量、权限、血缘、目录]
+    LAKE --> GOVERN
+`} />
+
+最终落地的架构可能很简单，也可能很复杂。复杂度应该由数据规模、延迟、可靠性和复用需求推动，而不是由技术名词推动。
+
+## 20. 总结：把技术栈还原成几个基本动作
+
+大数据系统看起来有几十个组件，但底层动作其实很少：
+
+1. **追加和保存**：Kafka、对象存储、HDFS 让事件和文件可靠存在。
+2. **分区和复制**：把数据和计算分散到多台机器，同时处理故障。
+3. **批量和流式计算**：MapReduce/Spark 处理历史，Flink 处理持续到达的事件。
+4. **索引和裁剪**：Parquet、Doris、ClickHouse、Elasticsearch 尽量少读数据。
+5. **状态和恢复**：Flink State、Checkpoint、数据库事务和表快照保证失败后可恢复。
+6. **调度和治理**：Airflow、DataHub、OpenLineage、质量规则让链路可运行、可解释、可追责。
+7. **服务和复用**：Doris、Trino、BI、特征服务把数据变成查询、推荐和决策。
+
+如果只记住一条主线，可以记成：
+
+> **数据源产生事件，Kafka 负责可靠分发，Flink 负责实时状态，Spark 负责批量加工，Iceberg 负责湖仓一致性，Doris 负责低延迟分析，Airflow 负责依赖，治理系统负责让结果可信。**
+
+这不是唯一架构，却是一条非常适合入门者理解现代大数据平台的主干。掌握这条主干后，再去学习 Pulsar、Hudi、Trino、StarRocks、Pinot、Feast 或云厂商服务，就能把新组件放回正确的位置，而不是重新背一遍产品宣传语。
+
+## 参考资料：优先阅读官方文档
+
+- [Apache Kafka Introduction](https://kafka.apache.org/intro/)
+- [Apache Flink Concepts](https://nightlies.apache.org/flink/flink-docs-stable/docs/concepts/overview/)
+- [Apache Flink Architecture](https://nightlies.apache.org/flink/flink-docs-stable/docs/concepts/flink-architecture/)
+- [Apache Flink Checkpointing](https://nightlies.apache.org/flink/flink-docs-stable/docs/dev/datastream/fault-tolerance/checkpointing/)
+- [Apache Doris：Introduction to Apache Doris](https://doris.apache.org/docs/3.x/gettingStarted/what-is-apache-doris/)
+- [Apache Spark Overview](https://spark.apache.org/docs/latest/)
+- [Apache Hadoop HDFS Architecture](https://hadoop.apache.org/docs/stable/hadoop-project-dist/hadoop-hdfs/HdfsDesign.html)
+- [Apache Hadoop YARN](https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YARN.html)
+- [Apache Iceberg：Reliability](https://iceberg.apache.org/docs/latest/reliability/)
+- [Apache Debezium Architecture](https://debezium.io/documentation/reference/stable/architecture.html)
+- [Apache NiFi Overview](https://nifi.apache.org/docs/nifi-docs/html/overview.html)
+- [Apache Pulsar Architecture](https://pulsar.apache.org/docs/next/concepts-architecture-overview/)
+- [Apache RocketMQ Domain Model](https://rocketmq.apache.org/docs/domainModel/01main/)
+- [Apache Beam：Basics of the Beam model](https://beam.apache.org/documentation/basics/)
+- [Apache Hive](https://hive.apache.org/)
+- [Trino Concepts](https://trino.io/docs/current/overview/concepts.html)
+- [Apache DataHub Architecture](https://datahubproject.io/docs/architecture/architecture)
+- [OpenLineage](https://openlineage.io/docs/)
+- [dbt Introduction](https://docs.getdbt.com/docs/introduction)
+- [Apache ZooKeeper Overview](https://zookeeper.apache.org/doc/current/zookeeperOver.html)
+- [MLflow](https://mlflow.org/docs/latest/ml/)
+- [Feast Architecture](https://docs.feast.dev/getting-started/architecture/overview)
